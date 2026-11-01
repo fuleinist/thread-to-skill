@@ -1,0 +1,4 @@
+installed claude     G:\dev\clawd\.scratch\t2s-demo-clean\project\.claude\skills\checkout-integration-tests-fail
+installed agents     G:\dev\clawd\.scratch\t2s-demo-clean\project\.agents\skills\checkout-integration-tests-fail
+
+installed 2/2 target(s)

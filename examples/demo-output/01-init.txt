@@ -1,0 +1,7 @@
+initialized G:\dev\clawd\.scratch\t2s-demo-clean\.thread2skill
+  skills  G:\dev\clawd\.scratch\t2s-demo-clean\.thread2skill\skills
+  threads G:\dev\clawd\.scratch\t2s-demo-clean\.thread2skill\threads
+  index   G:\dev\clawd\.scratch\t2s-demo-clean\.thread2skill\index.db
+  provider offline · redaction on
+
+Next: `t2s ingest ./path/to/export` then `t2s distill latest`.

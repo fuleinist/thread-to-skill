@@ -1,0 +1,7 @@
+[30/10/2026, 3:05:12 PM] Alice: Let's standardize the Friday release checklist. Right now everyone does something different.
+[30/10/2026, 3:07:40 PM] Ben: Agreed. The minimum is: freeze main at 3pm, run the smoke suite, post in #releases, tag, then watch the dashboards for 30 minutes.
+[30/10/2026, 3:09:02 PM] Priya: We decided there are no releases after 4pm on Friday. If it slips, it waits until Monday.
+[30/10/2026, 3:11:30 PM] Ben: Gotcha: don't deploy if on-call is unstaffed. Last time we shipped and nobody was watching the error budget.
+[30/10/2026, 3:13:18 PM] Alice: Verification: error rate stays under 0.5 percent and p95 latency under 400ms for 30 minutes. If either moves, roll back with the previous tag.
+[30/10/2026, 3:15:55 PM] Priya: I'll put the checklist in the runbook and link it from the release PR template.
+[30/10/2026, 3:16:10 PM] Alice: Perfect. Thanks!

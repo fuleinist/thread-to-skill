@@ -1,0 +1,5 @@
+installed claude    G:\dev\clawd\.scratch\t2s-demo-clean\project\.claude\settings.json UserPromptSubmit
+installed cursor    G:\dev\clawd\.scratch\t2s-demo-clean\project\.cursor\hooks.json beforeSubmitPrompt
+installed deepseek  G:\dev\clawd\.scratch\t2s-demo-clean\project\.dsh\hooks.json Claude Code bridge
+
+Hooks call `t2s suggest`; keep `t2s` on PATH or set T2S_BIN.

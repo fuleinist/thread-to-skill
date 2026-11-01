@@ -1,0 +1,9 @@
+{"thread_id": "oncall-rotation", "id": "m1", "timestamp": "2026-10-29T09:00:00Z", "author": "Nadia", "text": "Our on-call rotation keeps missing handovers. Can we make this boring?"}
+{"thread_id": "oncall-rotation", "id": "m2", "timestamp": "2026-10-29T09:04:00Z", "author": "Leo", "text": "We should add a 15-minute handover template: open incidents, risky deploys, expiring certs, and who owns each item."}
+{"thread_id": "oncall-rotation", "id": "m3", "timestamp": "2026-10-29T09:07:00Z", "author": "Nadia", "text": "Decided: the outgoing on-call posts the template in #oncall before 10am, and the incoming on-call replies with explicit acknowledgement."}
+{"thread_id": "oncall-rotation", "id": "m4", "timestamp": "2026-10-29T09:11:00Z", "author": "Leo", "text": "Gotcha: a thread reply is not acknowledgement. Use the checkmark reaction so we can audit it."}
+{"thread_id": "oncall-rotation", "id": "m5", "timestamp": "2026-10-29T09:15:00Z", "author": "Nadia", "text": "Verification: every weekday handover has a checkmark within 30 minutes, and the weekly review lists any misses."}
+{"thread_id": "key-rotation", "id": "k1", "timestamp": "2026-10-28T11:00:00Z", "author": "Iris", "text": "We need a safer API key rotation procedure for the billing service."}
+{"thread_id": "key-rotation", "id": "k2", "timestamp": "2026-10-28T11:03:00Z", "author": "Owen", "text": "The fix is to introduce the new key first, deploy it to all consumers, wait one full deploy cycle, then revoke the old key."}
+{"thread_id": "key-rotation", "id": "k3", "timestamp": "2026-10-28T11:06:00Z", "author": "Iris", "text": "Never revoke before the consumers report the new key version. That caused the outage in July."}
+{"thread_id": "key-rotation", "id": "k4", "timestamp": "2026-10-28T11:10:00Z", "author": "Owen", "text": "Verification: call the billing health endpoint with each consumer identity and confirm the key version in the response header."}

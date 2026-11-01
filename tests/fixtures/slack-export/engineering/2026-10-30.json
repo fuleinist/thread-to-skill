@@ -1,0 +1,72 @@
+[
+  {
+    "type": "message",
+    "user": "U01",
+    "text": "Our checkout integration tests fail about 1 in 5 runs on CI. They pass locally. Anyone seen this?",
+    "ts": "1793440000.000100"
+  },
+  {
+    "type": "message",
+    "user": "U02",
+    "text": "Probably shared Postgres state. The suite runs four workers against the same schema, so two tests can create the same order at once.",
+    "ts": "1793440060.000200",
+    "thread_ts": "1793440000.000100"
+  },
+  {
+    "type": "message",
+    "user": "U03",
+    "text": "I reproduced it. The failure is a duplicate key on orders_external_id_key because the retry creates a second order row. The CI token in the job is ghp_FAKEfakeFAKEfakeFAKEfake1234567890 and my email is priya.nair@acme.example if you need the logs.",
+    "ts": "1793440120.000300",
+    "thread_ts": "1793440000.000100",
+    "reactions": [{"name": "eyes", "count": 2}]
+  },
+  {
+    "type": "message",
+    "user": "U01",
+    "text": "So the retry isn't idempotent? That would explain why it only shows up under load.",
+    "ts": "1793440180.000400",
+    "thread_ts": "1793440000.000100"
+  },
+  {
+    "type": "message",
+    "user": "U02",
+    "text": "Right. create_order() inserts before it checks the idempotency key. The fix is to make the insert ON CONFLICT (external_id) DO NOTHING RETURNING id, then select the existing row when no id comes back.",
+    "ts": "1793440240.000500",
+    "thread_ts": "1793440000.000100"
+  },
+  {
+    "type": "message",
+    "user": "U03",
+    "text": "Also don't retry on IntegrityError. We should only retry on connection errors and 5xx responses. I added a test that calls the handler twice with the same key and asserts one row.",
+    "ts": "1793440300.000600",
+    "thread_ts": "1793440000.000100"
+  },
+  {
+    "type": "message",
+    "user": "U01",
+    "text": "We decided to use a per-worker schema via the pytest-xdist worker_id and keep the idempotency fix. That isolates the DB and removes the shared-state race.",
+    "ts": "1793440360.000700",
+    "thread_ts": "1793440000.000100"
+  },
+  {
+    "type": "message",
+    "user": "U02",
+    "text": "Gotcha: if you use --dist loadscope, all tests in a module share a worker, so schema setup has to be session-scoped or you will create it twice.",
+    "ts": "1793440420.000800",
+    "thread_ts": "1793440000.000100"
+  },
+  {
+    "type": "message",
+    "user": "U03",
+    "text": "Verification: run pytest tests/integration -n 4 --count=3 and confirm zero duplicate-key failures. Also check pg_stat_activity has one schema per worker.",
+    "ts": "1793440480.000900",
+    "thread_ts": "1793440000.000100"
+  },
+  {
+    "type": "message",
+    "user": "U01",
+    "text": "PR is up: https://github.com/acme/checkout/pull/482. Thanks all.",
+    "ts": "1793440540.001000",
+    "thread_ts": "1793440000.000100"
+  }
+]

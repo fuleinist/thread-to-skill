@@ -1,0 +1,61 @@
+{
+  "guild": {"id": "9001", "name": "Acme"},
+  "channel": {"id": "9002", "name": "incidents"},
+  "messages": [
+    {
+      "id": "1001",
+      "type": "Default",
+      "timestamp": "2026-10-30T04:20:00+00:00",
+      "author": {"id": "1", "name": "Mira Sol", "nickname": "mira"},
+      "content": "Checkout is returning 500s in prod right after the 14:20 deploy. The error is relation orders_v2 does not exist."
+    },
+    {
+      "id": "1002",
+      "type": "Default",
+      "timestamp": "2026-10-30T04:22:00+00:00",
+      "author": {"id": "2", "name": "Sam Ito", "nickname": "sam"},
+      "content": "The migration did not run because the release job still uses the old migration image tag. App and migration tags drifted.",
+      "reference": {"messageId": "1001"}
+    },
+    {
+      "id": "1003",
+      "type": "Default",
+      "timestamp": "2026-10-30T04:24:00+00:00",
+      "author": {"id": "1", "name": "Mira Sol", "nickname": "mira"},
+      "content": "We decided to roll back the app now and fix forward after the incident is contained.",
+      "reference": {"messageId": "1001"}
+    },
+    {
+      "id": "1004",
+      "type": "Default",
+      "timestamp": "2026-10-30T04:25:00+00:00",
+      "author": {"id": "2", "name": "Sam Ito", "nickname": "sam"},
+      "content": "Rollback command: kubectl rollout undo deployment/checkout -n prod. Then watch the rollout status before touching anything else.",
+      "reference": {"messageId": "1001"}
+    },
+    {
+      "id": "1005",
+      "type": "Default",
+      "timestamp": "2026-10-30T04:27:00+00:00",
+      "author": {"id": "3", "name": "Ana Ruiz", "nickname": "ana"},
+      "content": "Gotcha: rollback alone leaves the new migration job spec in place. Pin the migration image to the same tag as the app or the next deploy will drift again.",
+      "reference": {"messageId": "1001"}
+    },
+    {
+      "id": "1006",
+      "type": "Default",
+      "timestamp": "2026-10-30T04:33:00+00:00",
+      "author": {"id": "1", "name": "Mira Sol", "nickname": "mira"},
+      "content": "Verification: /healthz returns 200 for five minutes and the 5xx rate is below 0.1 percent. I will post the dashboard link in the incident channel.",
+      "reference": {"messageId": "1001"}
+    },
+    {
+      "id": "1007",
+      "type": "Default",
+      "timestamp": "2026-10-30T04:40:00+00:00",
+      "author": {"id": "2", "name": "Sam Ito", "nickname": "sam"},
+      "content": "Follow-up: add a deploy gate that fails when the migration image tag and app image tag differ. That is the actual root cause.",
+      "reference": {"messageId": "1001"}
+    }
+  ]
+}

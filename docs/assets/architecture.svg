@@ -1,0 +1,142 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="780" viewBox="0 0 1400 780" role="img" aria-labelledby="title desc">
+  <title id="title">Thread to Skills architecture</title>
+  <desc id="desc">Conversation exports are ingested, redacted, distilled into a portable skill bundle, indexed for retrieval, and installed into agent harnesses with feedback driving confidence.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#94A3B8"/>
+    </marker>
+    <marker id="arrowFeedback" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#F59E0B"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#0F172A" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <rect x="0" y="0" width="1400" height="780" rx="32" fill="#F8FAFC"/>
+  <text x="56" y="74" font-family="Segoe UI, Inter, system-ui, sans-serif" font-size="38" font-weight="700" fill="#0B1020">Thread to Skills — architecture</text>
+  <text x="56" y="110" font-family="Segoe UI, Inter, system-ui, sans-serif" font-size="20" fill="#475569">A local-first compiler from messy conversation to a portable, reusable agent skill.</text>
+
+  <!-- 1 Capture -->
+  <g filter="url(#shadow)">
+    <rect x="48" y="160" width="240" height="300" rx="20" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <rect x="48" y="160" width="240" height="8" rx="4" fill="#6366F1"/>
+    <text x="72" y="204" font-family="Segoe UI, Inter, sans-serif" font-size="13" font-weight="700" fill="#6366F1" letter-spacing="1.2">01 · CAPTURE</text>
+    <text x="72" y="236" font-family="Segoe UI, Inter, sans-serif" font-size="22" font-weight="700" fill="#0B1020">Conversation exports</text>
+    <g font-family="Segoe UI, Inter, sans-serif" font-size="16" fill="#334155">
+      <rect x="72" y="256" width="192" height="34" rx="9" fill="#EEF2FF"/><text x="86" y="278">Slack workspace export</text>
+      <rect x="72" y="298" width="192" height="34" rx="9" fill="#EEF2FF"/><text x="86" y="320">DiscordChatExporter JSON</text>
+      <rect x="72" y="340" width="192" height="34" rx="9" fill="#EEF2FF"/><text x="86" y="362">WhatsApp .txt</text>
+      <rect x="72" y="382" width="192" height="34" rx="9" fill="#EEF2FF"/><text x="86" y="404">Telegram · JSONL · MD</text>
+    </g>
+    <text x="72" y="440" font-family="Segoe UI, Inter, sans-serif" font-size="14" fill="#64748B">ZIPs, folders, or a single file.</text>
+  </g>
+  <line x1="292" y1="310" x2="332" y2="310" stroke="#94A3B8" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <!-- 2 Ingest -->
+  <g filter="url(#shadow)">
+    <rect x="340" y="160" width="250" height="300" rx="20" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <rect x="340" y="160" width="250" height="8" rx="4" fill="#0EA5E9"/>
+    <text x="364" y="204" font-family="Segoe UI, Inter, sans-serif" font-size="13" font-weight="700" fill="#0284C7" letter-spacing="1.2">02 · INGEST</text>
+    <text x="364" y="236" font-family="Segoe UI, Inter, sans-serif" font-size="22" font-weight="700" fill="#0B1020">Normalize &amp; redact</text>
+    <g font-family="Segoe UI, Inter, sans-serif" font-size="15" fill="#334155">
+      <text x="364" y="274">• Format detection</text>
+      <text x="364" y="302">• Thread reconstruction</text>
+      <text x="364" y="330">• Quiet-gap windows</text>
+      <text x="364" y="358">• Tokens, emails, phones</text>
+      <text x="364" y="386">• Custom redaction rules</text>
+    </g>
+    <rect x="364" y="408" width="202" height="34" rx="9" fill="#E0F2FE"/>
+    <text x="376" y="430" font-family="Segoe UI, Inter, sans-serif" font-size="14" fill="#075985">local · deterministic · no upload</text>
+  </g>
+  <line x1="594" y1="310" x2="634" y2="310" stroke="#94A3B8" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <!-- 3 Distill -->
+  <g filter="url(#shadow)">
+    <rect x="642" y="160" width="250" height="300" rx="20" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <rect x="642" y="160" width="250" height="8" rx="4" fill="#8B5CF6"/>
+    <text x="666" y="204" font-family="Segoe UI, Inter, sans-serif" font-size="13" font-weight="700" fill="#7C3AED" letter-spacing="1.2">03 · DISTILL</text>
+    <text x="666" y="236" font-family="Segoe UI, Inter, sans-serif" font-size="22" font-weight="700" fill="#0B1020">Extract the reusable part</text>
+    <g font-family="Segoe UI, Inter, sans-serif" font-size="15" fill="#334155">
+      <text x="666" y="274">• Decisions &amp; rationale</text>
+      <text x="666" y="302">• Ordered procedure</text>
+      <text x="666" y="330">• Pitfalls &amp; anti-patterns</text>
+      <text x="666" y="358">• Verification checks</text>
+      <text x="666" y="386">• Open questions</text>
+    </g>
+    <rect x="666" y="408" width="202" height="34" rx="9" fill="#F3E8FF"/>
+    <text x="678" y="430" font-family="Segoe UI, Inter, sans-serif" font-size="14" fill="#6B21A8">offline heuristics or your LLM</text>
+  </g>
+  <line x1="896" y1="310" x2="936" y2="310" stroke="#94A3B8" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <!-- 4 Skill bundle -->
+  <g filter="url(#shadow)">
+    <rect x="944" y="160" width="408" height="300" rx="20" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <rect x="944" y="160" width="408" height="8" rx="4" fill="#14B8A6"/>
+    <text x="968" y="204" font-family="Segoe UI, Inter, sans-serif" font-size="13" font-weight="700" fill="#0D9488" letter-spacing="1.2">04 · PORTABLE SKILL</text>
+    <text x="968" y="236" font-family="Segoe UI, Inter, sans-serif" font-size="22" font-weight="700" fill="#0B1020">Open Agent Skills format</text>
+    <g font-family="Consolas, SFMono-Regular, monospace" font-size="15" fill="#334155">
+      <rect x="968" y="256" width="360" height="112" rx="12" fill="#0F172A"/>
+      <text x="986" y="282" fill="#E2E8F0">skill-name/</text>
+      <text x="1002" y="306" fill="#5EEAD4">├── SKILL.md</text>
+      <text x="1002" y="330" fill="#A5B4FC">├── references/thread.md</text>
+      <text x="1002" y="354" fill="#FDE68A">└── metadata.json</text>
+    </g>
+    <g font-family="Segoe UI, Inter, sans-serif" font-size="14">
+      <rect x="968" y="386" width="96" height="30" rx="15" fill="#CCFBF1"/><text x="1016" y="406" text-anchor="middle" fill="#115E59">category</text>
+      <rect x="1072" y="386" width="70" height="30" rx="15" fill="#E0E7FF"/><text x="1107" y="406" text-anchor="middle" fill="#3730A3">tags</text>
+      <rect x="1150" y="386" width="104" height="30" rx="15" fill="#FEF3C7"/><text x="1202" y="406" text-anchor="middle" fill="#92400E">confidence</text>
+      <rect x="1262" y="386" width="66" height="30" rx="15" fill="#F1F5F9"/><text x="1295" y="406" text-anchor="middle" fill="#334155">v1</text>
+    </g>
+    <text x="968" y="444" font-family="Segoe UI, Inter, sans-serif" font-size="14" fill="#64748B">Readable, diffable, and owned by you.</text>
+  </g>
+
+  <!-- Bottom row -->
+  <g filter="url(#shadow)">
+    <rect x="48" y="530" width="300" height="160" rx="20" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <text x="72" y="568" font-family="Segoe UI, Inter, sans-serif" font-size="13" font-weight="700" fill="#475569" letter-spacing="1.2">INDEX</text>
+    <text x="72" y="600" font-family="Segoe UI, Inter, sans-serif" font-size="21" font-weight="700" fill="#0B1020">SQLite + FTS5</text>
+    <text x="72" y="630" font-family="Segoe UI, Inter, sans-serif" font-size="15" fill="#475569">Search, rank, suggest, and track</text>
+    <text x="72" y="654" font-family="Segoe UI, Inter, sans-serif" font-size="15" fill="#475569">worked / failed outcomes.</text>
+    <text x="72" y="678" font-family="Segoe UI, Inter, sans-serif" font-size="13" fill="#94A3B8">No server. One local database.</text>
+  </g>
+  <line x1="352" y1="610" x2="392" y2="610" stroke="#94A3B8" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="400" y="530" width="330" height="160" rx="20" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <text x="424" y="568" font-family="Segoe UI, Inter, sans-serif" font-size="13" font-weight="700" fill="#475569" letter-spacing="1.2">PROACTIVE LAYER</text>
+    <text x="424" y="600" font-family="Segoe UI, Inter, sans-serif" font-size="21" font-weight="700" fill="#0B1020">Suggest before you ask</text>
+    <text x="424" y="630" font-family="Segoe UI, Inter, sans-serif" font-size="15" fill="#475569">Claude Code · UserPromptSubmit</text>
+    <text x="424" y="654" font-family="Segoe UI, Inter, sans-serif" font-size="15" fill="#475569">Cursor · beforeSubmitPrompt</text>
+    <text x="424" y="678" font-family="Segoe UI, Inter, sans-serif" font-size="15" fill="#475569">OpenClaw · Hermes · DeepSeek bridge</text>
+  </g>
+  <line x1="734" y1="610" x2="774" y2="610" stroke="#94A3B8" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="782" y="530" width="300" height="160" rx="20" fill="#FFFFFF" stroke="#E2E8F0"/>
+    <text x="806" y="568" font-family="Segoe UI, Inter, sans-serif" font-size="13" font-weight="700" fill="#475569" letter-spacing="1.2">HARNESSES</text>
+    <text x="806" y="600" font-family="Segoe UI, Inter, sans-serif" font-size="21" font-weight="700" fill="#0B1020">One skill, many hosts</text>
+    <g font-family="Segoe UI, Inter, sans-serif" font-size="14">
+      <rect x="806" y="620" width="118" height="28" rx="14" fill="#EEF2FF"/><text x="865" y="639" text-anchor="middle" fill="#3730A3">Claude Code</text>
+      <rect x="932" y="620" width="70" height="28" rx="14" fill="#F1F5F9"/><text x="967" y="639" text-anchor="middle" fill="#334155">Cursor</text>
+      <rect x="1010" y="620" width="58" height="28" rx="14" fill="#F1F5F9"/><text x="1039" y="639" text-anchor="middle" fill="#334155">Hermes</text>
+      <rect x="806" y="656" width="92" height="28" rx="14" fill="#F1F5F9"/><text x="852" y="675" text-anchor="middle" fill="#334155">OpenClaw</text>
+      <rect x="906" y="656" width="132" height="28" rx="14" fill="#F1F5F9"/><text x="972" y="675" text-anchor="middle" fill="#334155">DeepSeek Harness</text>
+    </g>
+  </g>
+
+  <!-- Feedback -->
+  <g filter="url(#shadow)">
+    <rect x="1112" y="530" width="240" height="160" rx="20" fill="#FFFBEB" stroke="#FDE68A"/>
+    <text x="1136" y="568" font-family="Segoe UI, Inter, sans-serif" font-size="13" font-weight="700" fill="#B45309" letter-spacing="1.2">COMPOUNDING</text>
+    <text x="1136" y="604" font-family="Segoe UI, Inter, sans-serif" font-size="26" font-weight="700" fill="#92400E">↑ confidence</text>
+    <text x="1136" y="634" font-family="Segoe UI, Inter, sans-serif" font-size="15" fill="#92400E">worked / failed feedback</text>
+    <text x="1136" y="658" font-family="Segoe UI, Inter, sans-serif" font-size="15" fill="#92400E">reviews stale skills</text>
+    <text x="1136" y="682" font-family="Segoe UI, Inter, sans-serif" font-size="13" fill="#B45309">The library gets sharper with use.</text>
+  </g>
+
+  <path d="M1232 528 C1232 486 1160 470 1120 470 L1120 462" fill="none" stroke="#F59E0B" stroke-width="3" stroke-dasharray="7 6" marker-end="url(#arrowFeedback)"/>
+  <text x="1116" y="514" font-family="Segoe UI, Inter, sans-serif" font-size="13" fill="#B45309">outcome feedback</text>
+
+  <text x="56" y="746" font-family="Segoe UI, Inter, sans-serif" font-size="15" fill="#64748B">Everything runs on your machine. The output is portable Markdown, not a proprietary store.</text>
+</svg>

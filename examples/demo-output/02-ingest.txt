@@ -1,0 +1,7 @@
+THREAD        SOURCE  CHANNEL      MSGS  TITLE
+────────────  ──────  ───────────  ────  ────────────────────────────────────────────────
+f14de44f6ca5  slack   engineering  10    Our checkout integration tests fail about 1 in …
+
+ingested 1 thread(s) · 10 messages
+redaction: 1 email, 1 github_token
+Indexed in G:\dev\clawd\.scratch\t2s-demo-clean\.thread2skill\index.db

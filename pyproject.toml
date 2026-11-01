@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "thread-to-skill"
+version = "0.1.0"
+description = "Turn Slack, Discord, and WhatsApp threads into reusable agent skills."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "fuleinist" }]
+keywords = [
+  "agent-skills",
+  "ai-agents",
+  "slack",
+  "discord",
+  "whatsapp",
+  "knowledge-management",
+  "claude-code",
+  "cursor",
+  "openclaw",
+  "hermes-agent",
+  "deepseek-harness",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Documentation",
+  "Topic :: Text Processing :: Markup",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = []
+
+[project.scripts]
+t2s = "thread_to_skill.cli:main"
+thread-to-skill = "thread_to_skill.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/fuleinist/thread-to-skill"
+Repository = "https://github.com/fuleinist/thread-to-skill"
+Issues = "https://github.com/fuleinist/thread-to-skill/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+thread_to_skill = ["py.typed"]

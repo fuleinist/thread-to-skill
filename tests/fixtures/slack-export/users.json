@@ -1,0 +1,5 @@
+[
+  {"id": "U01", "name": "alice", "real_name": "Alice Chen", "profile": {"display_name": "Alice Chen"}},
+  {"id": "U02", "name": "ben", "real_name": "Ben Okafor", "profile": {"display_name": "Ben Okafor"}},
+  {"id": "U03", "name": "priya", "real_name": "Priya Nair", "profile": {"display_name": "Priya Nair"}}
+]
