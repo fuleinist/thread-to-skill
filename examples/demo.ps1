@@ -18,7 +18,7 @@ foreach ($path in @(
     (Join-Path $Root "tests/fixtures/whatsapp/release-checklist.txt"),
     (Join-Path $Root "tests/fixtures/generic/threads.jsonl")
 )) {
-    $threads += (t2s --home $Ws ingest $path --json | ConvertFrom-Json)
+    $threads += (t2s --home $Ws ingest $path --json | ConvertFrom-Json).threads
 }
 
 foreach ($thread in $threads) {

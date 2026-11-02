@@ -116,6 +116,7 @@ class Store:
 
     # ------------------------------------------------------------------ threads
     def add_thread(self, thread: Thread) -> None:
+        """Insert or upsert one thread. Callers decide whether to write at all."""
         self.conn.execute(
             """
             INSERT INTO threads (id, source, channel, title, started_at, ended_at, message_count,
@@ -151,6 +152,13 @@ class Store:
 
     def get_thread_row(self, thread_id: str) -> sqlite3.Row | None:
         return self.conn.execute("SELECT * FROM threads WHERE id = ?", (thread_id,)).fetchone()
+
+    def thread_content_hash(self, thread_id: str) -> str | None:
+        """Return the stored content hash, or None when the thread is not indexed yet."""
+        row = self.conn.execute(
+            "SELECT content_hash FROM threads WHERE id = ?", (thread_id,)
+        ).fetchone()
+        return None if row is None else str(row["content_hash"])
 
     def get_thread(self, thread_id: str, threads_dir: Path) -> Thread | None:
         row = self.get_thread_row(thread_id)

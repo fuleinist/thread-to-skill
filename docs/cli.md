@@ -48,6 +48,7 @@ t2s ingest ./discord.json ./whatsapp.txt
 t2s ingest ./export.zip --format auto
 t2s ingest ./messages.jsonl --gap-minutes 30
 t2s ingest ./slack-export --json
+t2s ingest ./slack-export --force
 ```
 
 | Option | Default | Meaning |
@@ -56,9 +57,44 @@ t2s ingest ./slack-export --json
 | `--gap-minutes` | `60` | Split unthreaded messages on this quiet gap |
 | `--channel` | from export | Override the channel name |
 | `--title` | first line | Override the thread title |
+| `--force` | off | Rewrite every thread even when it did not change |
 | `--json` | off | Machine-readable output |
 
-Each accepted thread is written to `threads/<id>.json` after redaction and upserted into SQLite.
+Each accepted thread is redacted and compared with the stored `content_hash`.
+An unchanged thread is skipped: nothing is written to the database, its
+`threads/<id>.json` file is left untouched, and `ingested_at` does not change.
+A changed thread, a new thread, or any thread under `--force` is written to
+`threads/<id>.json` and upserted into SQLite. If the normalized file is missing,
+the thread is written again so the index and the file stay in sync. Every result
+item carries a `status` of `added`, `updated`, or `skipped`.
+
+The human output lists only added and updated threads, prints `no changes` when
+everything was skipped, and ends with a summary of the three counts.
+
+`--json` prints one object rather than a bare array:
+
+```json
+{
+  "added": 0,
+  "updated": 0,
+  "skipped": 1,
+  "threads": [
+    {
+      "id": "f14de44f6ca5",
+      "source": "slack",
+      "channel": "engineering",
+      "title": "Checkout integration tests fail on CI",
+      "messages": 10,
+      "participants": 3,
+      "started_at": "2026-10-30T00:26:40Z",
+      "redactions": "github token, email",
+      "status": "skipped"
+    }
+  ]
+}
+```
+
+Each entry keeps the keys it had before plus `status`.
 
 ---
 
