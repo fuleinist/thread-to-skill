@@ -20,7 +20,7 @@ for path in \
   "$ROOT/tests/fixtures/generic/threads.jsonl"
 do
   payload="$(t2s --home "$WS" ingest "$path" --json)"
-  batch="$(printf '%s' "$payload" | python -c 'import json,sys; print(" ".join(item["id"] for item in json.load(sys.stdin)))')"
+  batch="$(printf '%s' "$payload" | python -c 'import json,sys; print(" ".join(item["id"] for item in json.load(sys.stdin)["threads"]))')"
   ids="$ids $batch"
 done
 

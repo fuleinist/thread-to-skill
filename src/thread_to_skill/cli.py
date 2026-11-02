@@ -201,9 +201,33 @@ def cmd_init(args: argparse.Namespace) -> int:
     return 0
 
 
+INGEST_STATUSES = ("added", "updated", "skipped")
+
+
+def _ingest_thread(store: Store, config: Config, thread: Thread, *, force: bool) -> str:
+    """Write one normalized thread. Return `added`, `updated`, or `skipped`.
+
+    The stored hash comes from the redacted thread, so a match means the
+    conversation did not change and nothing needs to be written. A match only
+    counts while the normalized copy exists, so a lost `threads/` file heals.
+    """
+    target = _normalized_path(config, thread.id)
+    stored_hash = store.thread_content_hash(thread.id)
+    if (
+        not force
+        and stored_hash is not None
+        and stored_hash == thread.content_hash()
+        and target.exists()
+    ):
+        return "skipped"
+    atomic_write_json(target, thread.to_dict())
+    store.add_thread(thread)
+    return "added" if stored_hash is None else "updated"
+
+
 def cmd_ingest(args: argparse.Namespace) -> int:
     config, store = _open(args)
-    total_threads = 0
+    counts = {status: 0 for status in INGEST_STATUSES}
     results: list[dict[str, Any]] = []
     for raw_path in args.paths:
         threads = load_path(
@@ -217,9 +241,8 @@ def cmd_ingest(args: argparse.Namespace) -> int:
             redaction = None
             if config.redact_enabled:
                 thread, redaction = redact_thread(thread, config.custom_redactions)
-            atomic_write_json(_normalized_path(config, thread.id), thread.to_dict())
-            store.add_thread(thread)
-            total_threads += 1
+            status = _ingest_thread(store, config, thread, force=args.force)
+            counts[status] += 1
             results.append(
                 {
                     "id": thread.id,
@@ -230,16 +253,32 @@ def cmd_ingest(args: argparse.Namespace) -> int:
                     "participants": len(thread.participants),
                     "started_at": thread.started_at,
                     "redactions": redaction.summary() if redaction else "disabled",
+                    "status": status,
                 }
             )
     if args.json:
-        _print(json.dumps(results, ensure_ascii=False, indent=2))
+        _print(
+            json.dumps(
+                {
+                    "added": counts["added"],
+                    "updated": counts["updated"],
+                    "skipped": counts["skipped"],
+                    "threads": results,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return 0
-    rows = [
-        [item["id"], item["source"], item["channel"], str(item["messages"]), truncate(item["title"], 52)]
-        for item in results
-    ]
-    _print(_table(["THREAD", "SOURCE", "CHANNEL", "MSGS", "TITLE"], rows))
+    changed = [item for item in results if item["status"] != "skipped"]
+    if results and not changed:
+        _print("no changes")
+    else:
+        rows = [
+            [item["id"], item["source"], item["channel"], str(item["messages"]), truncate(item["title"], 52)]
+            for item in changed
+        ]
+        _print(_table(["THREAD", "SOURCE", "CHANNEL", "MSGS", "TITLE"], rows))
     _print("")
     redactions = {
         item["redactions"]
@@ -247,7 +286,9 @@ def cmd_ingest(args: argparse.Namespace) -> int:
         if item["redactions"] not in {"disabled", "none", "no sensitive data detected"}
     }
     _print(
-        f"{green('ingested')} {human_number(total_threads)} thread(s) · "
+        f"{green(human_number(counts['added']) + ' added')} · "
+        f"{human_number(counts['updated'])} updated · "
+        f"{human_number(counts['skipped'])} skipped · "
         f"{human_number(sum(item['messages'] for item in results))} messages"
     )
     if redactions:
@@ -691,6 +732,7 @@ def build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--gap-minutes", type=int, default=0, help="Split unthreaded messages on this quiet gap")
     ingest.add_argument("--channel", default="", help="Override the channel name")
     ingest.add_argument("--title", default="", help="Override the thread title")
+    ingest.add_argument("--force", action="store_true", help="Rewrite every thread even when it did not change")
     ingest.add_argument("--json", action="store_true")
     ingest.set_defaults(func=cmd_ingest)
 

@@ -1,4 +1,6 @@
 import json
+import shutil
+import sqlite3
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -29,13 +31,45 @@ class CLITests(unittest.TestCase):
             code = main(["--home", str(self.home), *args])
         return code, stdout.getvalue(), stderr.getvalue()
 
+    def stored_ingested_at(self, thread_id: str) -> str:
+        conn = sqlite3.connect(str(self.home / "index.db"))
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                "SELECT ingested_at FROM threads WHERE id = ?", (thread_id,)
+            ).fetchone()
+        finally:
+            conn.close()
+        return row["ingested_at"]
+
+    def stored_content_hash(self, thread_id: str) -> str:
+        conn = sqlite3.connect(str(self.home / "index.db"))
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                "SELECT content_hash FROM threads WHERE id = ?", (thread_id,)
+            ).fetchone()
+        finally:
+            conn.close()
+        return row["content_hash"]
+
+    def force_stored_ingested_at(self, thread_id: str, value: str) -> None:
+        conn = sqlite3.connect(str(self.home / "index.db"))
+        try:
+            conn.execute("UPDATE threads SET ingested_at = ? WHERE id = ?", (value, thread_id))
+            conn.commit()
+        finally:
+            conn.close()
+
     def init_and_distill(self):
         code, _, _ = self.run_cli("init", "--provider", "offline")
         self.assertEqual(code, 0)
         code, output, _ = self.run_cli("ingest", str(SLACK), "--json")
         self.assertEqual(code, 0)
-        threads = json.loads(output)
+        data = json.loads(output)
+        threads = data["threads"]
         self.assertEqual(len(threads), 1)
+        self.assertEqual(data["added"], 1)
         thread_id = threads[0]["id"]
         code, output, _ = self.run_cli("distill", thread_id, "--provider", "offline", "--json")
         self.assertEqual(code, 0)
@@ -58,13 +92,116 @@ class CLITests(unittest.TestCase):
         self.run_cli("init", "--provider", "offline")
         code, output, _ = self.run_cli("ingest", str(SLACK), "--json")
         self.assertEqual(code, 0)
-        threads = json.loads(output)
+        threads = json.loads(output)["threads"]
         self.assertEqual(threads[0]["messages"], 10)
+        self.assertEqual(threads[0]["status"], "added")
         normalized = self.home / "threads" / f"{threads[0]['id']}.json"
         content = normalized.read_text(encoding="utf-8")
         self.assertNotIn("ghp_FAKE", content)
         self.assertNotIn("priya.nair@acme.example", content)
         self.assertIn("[redacted-github-token]", content)
+
+    def test_reingest_skips_unchanged_threads(self):
+        code, output, _ = self.run_cli("init", "--provider", "offline")
+        self.assertEqual(code, 0)
+        code, output, _ = self.run_cli("ingest", str(SLACK), "--json")
+        self.assertEqual(code, 0)
+        first = json.loads(output)
+        self.assertEqual(first["added"], 1)
+        thread_id = first["threads"][0]["id"]
+        normalized = self.home / "threads" / f"{thread_id}.json"
+        content_before = normalized.read_text(encoding="utf-8")
+        # A sentinel proves the row is not rewritten: a real write replaces this
+        # with now_iso(), which can match the first write when both run in the
+        # same second.
+        self.force_stored_ingested_at(thread_id, "2000-01-01T00:00:00Z")
+        hash_before = self.stored_content_hash(thread_id)
+
+        code, output, _ = self.run_cli("ingest", str(SLACK), "--json")
+        self.assertEqual(code, 0)
+        again = json.loads(output)
+        self.assertEqual(again["added"], 0)
+        self.assertEqual(again["updated"], 0)
+        self.assertEqual(again["skipped"], 1)
+        self.assertEqual(again["threads"][0]["status"], "skipped")
+        self.assertEqual(self.stored_ingested_at(thread_id), "2000-01-01T00:00:00Z")
+        self.assertEqual(self.stored_content_hash(thread_id), hash_before)
+        self.assertEqual(normalized.read_text(encoding="utf-8"), content_before)
+
+        code, output, _ = self.run_cli("ingest", str(SLACK))
+        self.assertEqual(code, 0)
+        self.assertIn("no changes", output)
+
+    def test_reingest_updates_changed_threads(self):
+        code, _, _ = self.run_cli("init", "--provider", "offline")
+        self.assertEqual(code, 0)
+        code, output, _ = self.run_cli("ingest", str(SLACK), "--json")
+        self.assertEqual(code, 0)
+        first = json.loads(output)
+        thread_id = first["threads"][0]["id"]
+        hash_before = self.stored_content_hash(thread_id)
+
+        copy = self.root / "slack-copy"
+        shutil.copytree(SLACK, copy)
+        # Edit a middle message so the title and the message count stay the same.
+        # A comparison on ids, counts, or titles would miss this change.
+        messages = json.loads((copy / "engineering" / "2026-10-30.json").read_text(encoding="utf-8"))
+        messages[3]["text"] = "A different message body, same author and the same count."
+        (copy / "engineering" / "2026-10-30.json").write_text(
+            json.dumps(messages), encoding="utf-8"
+        )
+
+        code, output, _ = self.run_cli("ingest", str(copy), "--json")
+        self.assertEqual(code, 0)
+        again = json.loads(output)
+        self.assertEqual(again["updated"], 1)
+        self.assertEqual(again["skipped"], 0)
+        self.assertEqual(again["added"], 0)
+        self.assertEqual(again["threads"][0]["status"], "updated")
+        self.assertEqual(again["threads"][0]["id"], thread_id)
+        self.assertEqual(again["threads"][0]["messages"], 10)
+        self.assertNotEqual(self.stored_content_hash(thread_id), hash_before)
+
+    def test_force_reingests_unchanged_threads(self):
+        code, _, _ = self.run_cli("init", "--provider", "offline")
+        self.assertEqual(code, 0)
+        code, output, _ = self.run_cli("ingest", str(SLACK), "--json")
+        self.assertEqual(code, 0)
+        thread_id = json.loads(output)["threads"][0]["id"]
+        self.force_stored_ingested_at(thread_id, "2000-01-01T00:00:00Z")
+        code, output, _ = self.run_cli("ingest", str(SLACK), "--force", "--json")
+        self.assertEqual(code, 0)
+        again = json.loads(output)
+        self.assertEqual(again["updated"], 1)
+        self.assertEqual(again["skipped"], 0)
+        self.assertEqual(again["threads"][0]["status"], "updated")
+        self.assertNotEqual(self.stored_ingested_at(thread_id), "2000-01-01T00:00:00Z")
+
+    def test_reingest_repairs_a_missing_normalized_file(self):
+        code, _, _ = self.run_cli("init", "--provider", "offline")
+        self.assertEqual(code, 0)
+        code, output, _ = self.run_cli("ingest", str(SLACK), "--json")
+        self.assertEqual(code, 0)
+        thread_id = json.loads(output)["threads"][0]["id"]
+        normalized = self.home / "threads" / f"{thread_id}.json"
+        normalized.unlink()
+        code, output, _ = self.run_cli("ingest", str(SLACK), "--json")
+        self.assertEqual(code, 0)
+        again = json.loads(output)
+        self.assertEqual(again["updated"], 1)
+        self.assertEqual(again["skipped"], 0)
+        self.assertTrue(normalized.exists())
+
+    def test_ingest_json_reports_status_counts(self):
+        code, _, _ = self.run_cli("init", "--provider", "offline")
+        self.assertEqual(code, 0)
+        code, output, _ = self.run_cli("ingest", str(SLACK), "--json")
+        self.assertEqual(code, 0)
+        payload = json.loads(output)
+        self.assertEqual(sorted(payload), ["added", "skipped", "threads", "updated"])
+        for key in ("added", "updated", "skipped"):
+            self.assertIsInstance(payload[key], int)
+        self.assertEqual(payload["threads"][0]["status"], "added")
 
     def test_end_to_end(self):
         thread_id, skill = self.init_and_distill()
