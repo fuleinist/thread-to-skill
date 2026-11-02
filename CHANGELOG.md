@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses semantic versioning.
 
+## [Unreleased]
+
+### Added
+
+- `t2s stats --by-source`, `--by-channel`, and `--timeline`: per-source thread and skill counts, a top-channels table limited to channels with at least one skill, and a last-12-ISO-weeks table of weekly ingest and distill counts. `t2s stats --json` always includes the `by_source`, `by_channel`, and `timeline` keys; an empty workspace prints a hint line instead of tables.
+
 ## [0.1.0] — 2026-11-01
 
 First public version.

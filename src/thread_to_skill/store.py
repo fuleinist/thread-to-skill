@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import sqlite3
 from pathlib import Path
@@ -76,6 +77,23 @@ CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(
     body
 );
 """
+
+TIMELINE_WEEKS = 12
+TOP_CHANNELS = 10
+
+
+def _week_monday(day: dt.date) -> dt.date:
+    """Monday of the ISO week that contains a local date."""
+    return day - dt.timedelta(days=day.isoweekday() - 1)
+
+
+def _local_date(value: Any) -> dt.date | None:
+    """Parse a stored ISO-8601 timestamp (possibly ending in Z) as a local date."""
+    try:
+        parsed = dt.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.astimezone().date()
 
 
 class Store:
@@ -361,9 +379,85 @@ class Store:
         categories = self.conn.execute(
             "SELECT category, COUNT(*) AS count FROM skills GROUP BY category ORDER BY count DESC"
         ).fetchall()
+        thread_origin: dict[str, tuple[str, str]] = {}
+        thread_counts: dict[tuple[str, str], int] = {}
+        ingested_dates: list[dt.date] = []
+        for row in self.conn.execute("SELECT id, source, channel, ingested_at FROM threads"):
+            origin = (row["source"], row["channel"])
+            thread_origin[row["id"]] = origin
+            thread_counts[origin] = thread_counts.get(origin, 0) + 1
+            ingested = _local_date(row["ingested_at"])
+            if ingested is not None:
+                ingested_dates.append(ingested)
+        skills_by_source: dict[str, set[str]] = {}
+        skills_by_channel: dict[tuple[str, str], set[str]] = {}
+        created_dates: list[dt.date] = []
+        for row in self.conn.execute("SELECT slug, source_threads, created_at FROM skills"):
+            try:
+                ids = json.loads(row["source_threads"])
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(ids, list):
+                continue
+            row_sources: set[str] = set()
+            row_channels: set[tuple[str, str]] = set()
+            for thread_id in ids:
+                origin = thread_origin.get(str(thread_id))
+                if origin is None:
+                    continue
+                row_sources.add(origin[0])
+                row_channels.add(origin)
+            for source in row_sources:
+                skills_by_source.setdefault(source, set()).add(row["slug"])
+            for channel in row_channels:
+                skills_by_channel.setdefault(channel, set()).add(row["slug"])
+            created = _local_date(row["created_at"])
+            if created is not None:
+                created_dates.append(created)
+        by_source = [
+            {
+                "source": source,
+                "threads": sum(count for (row_source, _), count in thread_counts.items() if row_source == source),
+                "skills": len(skills_by_source.get(source, set())),
+            }
+            for source in {key[0] for key in thread_counts}
+        ]
+        by_source.sort(key=lambda item: (-item["threads"], item["source"]))
+        by_channel = [
+            {
+                "source": source,
+                "channel": channel,
+                "threads": count,
+                "skills": len(skills_by_channel[(source, channel)]),
+            }
+            for (source, channel), count in thread_counts.items()
+            if skills_by_channel.get((source, channel))
+        ]
+        by_channel.sort(key=lambda item: (-item["skills"], -item["threads"], item["channel"]))
+        by_channel = by_channel[:TOP_CHANNELS]
+        now_local = dt.datetime.now(dt.timezone.utc).astimezone()
+        current_week = _week_monday(now_local.date())
+        weeks = [current_week - dt.timedelta(days=7 * (TIMELINE_WEEKS - 1 - index)) for index in range(TIMELINE_WEEKS)]
+        ingests = {week: 0 for week in weeks}
+        distills = {week: 0 for week in weeks}
+        for day in ingested_dates:
+            week = _week_monday(day)
+            if week in ingests:
+                ingests[week] += 1
+        for day in created_dates:
+            week = _week_monday(day)
+            if week in distills:
+                distills[week] += 1
+        timeline = [
+            {"week_start": week.isoformat(), "ingests": ingests[week], "distills": distills[week]}
+            for week in weeks
+        ]
         return {
             "threads": self.count_threads(),
             "skills": self.count_skills(),
             "by_status": {row["status"]: row["count"] for row in skills},
             "by_category": {row["category"]: row["count"] for row in categories},
+            "by_source": by_source,
+            "by_channel": by_channel,
+            "timeline": timeline,
         }

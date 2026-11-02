@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from datetime import datetime, timedelta
 from io import StringIO
 from pathlib import Path
 
@@ -224,6 +225,51 @@ class CLITests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("python", output)
         self.assertIn("workspace", output)
+
+    def test_stats_breakdowns(self):
+        self.init_and_distill()
+        code, output, _ = self.run_cli("stats", "--json")
+        self.assertEqual(code, 0)
+        stats = json.loads(output)
+        by_source = [row for row in stats["by_source"] if row["source"] == "slack"]
+        self.assertEqual(len(by_source), 1)
+        self.assertGreaterEqual(by_source[0]["threads"], 1)
+        self.assertIsInstance(stats["by_channel"], list)
+        timeline = stats["timeline"]
+        self.assertEqual(len(timeline), 12)
+        now = datetime.now().astimezone()
+        current_week = (now - timedelta(days=now.isoweekday() - 1)).date().isoformat()
+        self.assertEqual(timeline[-1]["week_start"], current_week)
+        self.assertGreaterEqual(timeline[-1]["ingests"], 1)
+
+    def test_stats_breakdown_flags_render_tables(self):
+        self.init_and_distill()
+        code, output, _ = self.run_cli("stats", "--by-source")
+        self.assertEqual(code, 0)
+        self.assertIn("By source", output)
+        self.assertIn("SOURCE", output)
+        code, output, _ = self.run_cli("stats", "--by-channel")
+        self.assertEqual(code, 0)
+        self.assertIn("Top channels", output)
+        self.assertIn("CHANNEL", output)
+        code, output, _ = self.run_cli("stats", "--timeline")
+        self.assertEqual(code, 0)
+        self.assertIn("Timeline", output)
+        self.assertIn("WEEK", output)
+
+    def test_stats_empty_workspace(self):
+        code, _, _ = self.run_cli("init", "--provider", "offline")
+        self.assertEqual(code, 0)
+        code, output, _ = self.run_cli("stats")
+        self.assertEqual(code, 0)
+        self.assertIn("No threads ingested yet.", output)
+        self.assertNotIn("CATEGORY", output)
+        code, output, _ = self.run_cli("stats", "--json")
+        stats = json.loads(output)
+        self.assertEqual(stats["by_source"], [])
+        self.assertEqual(stats["by_channel"], [])
+        self.assertEqual(len(stats["timeline"]), 12)
+        self.assertTrue(all(entry["ingests"] == 0 and entry["distills"] == 0 for entry in stats["timeline"]))
 
 
 if __name__ == "__main__":
