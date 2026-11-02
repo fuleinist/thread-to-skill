@@ -568,6 +568,9 @@ def cmd_stats(args: argparse.Namespace) -> int:
     if args.json:
         _print(json.dumps(stats, ensure_ascii=False, indent=2))
         return 0
+    if stats["threads"] == 0 and stats["skills"] == 0:
+        _print("No threads ingested yet. Run `t2s ingest <path>` to add threads.")
+        return 0
     _print(f"{bold('Workspace')} {config.home}")
     _print(f"  threads {stats['threads']} · skills {stats['skills']}")
     if stats["by_status"]:
@@ -577,6 +580,48 @@ def cmd_stats(args: argparse.Namespace) -> int:
         _print(bold("By category"))
         rows = [[category, category_label(category), str(count)] for category, count in stats["by_category"].items()]
         _print(_table(["CATEGORY", "LABEL", "SKILLS"], rows))
+    if args.by_source:
+        _print("")
+        if not stats["by_source"]:
+            _print("No skills per source yet.")
+        else:
+            _print(bold("By source"))
+            _print(
+                _table(
+                    ["SOURCE", "THREADS", "SKILLS"],
+                    [[row["source"], str(row["threads"]), str(row["skills"])] for row in stats["by_source"]],
+                )
+            )
+    if args.by_channel:
+        _print("")
+        if not stats["by_channel"]:
+            _print("No channels with skills yet.")
+        else:
+            _print(bold("Top channels"))
+            _print(
+                _table(
+                    ["SOURCE", "CHANNEL", "THREADS", "SKILLS"],
+                    [
+                        [row["source"], row["channel"], str(row["threads"]), str(row["skills"])]
+                        for row in stats["by_channel"]
+                    ],
+                )
+            )
+    if args.timeline:
+        _print("")
+        if not stats["timeline"]:
+            _print("Nothing in the last 12 weeks.")
+        else:
+            _print(bold("Timeline"))
+            _print(
+                _table(
+                    ["WEEK", "INGESTS", "DISTILLS"],
+                    [
+                        [entry["week_start"], str(entry["ingests"]), str(entry["distills"])]
+                        for entry in stats["timeline"]
+                    ],
+                )
+            )
     recent = store.list_events(limit=8)
     if recent:
         _print("")
@@ -729,6 +774,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     stats = sub.add_parser("stats", help="Show workspace statistics")
     stats.add_argument("--json", action="store_true")
+    stats.add_argument("--by-source", action="store_true", help="Show a table of threads and skills per source")
+    stats.add_argument("--by-channel", action="store_true", help="Show the top channels with skills")
+    stats.add_argument("--timeline", action="store_true", help="Show activity for the last 12 ISO weeks")
     stats.set_defaults(func=cmd_stats)
 
     doctor = sub.add_parser("doctor", help="Check the local environment")

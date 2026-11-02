@@ -239,9 +239,38 @@ Checks the Agent Skills layout, frontmatter, metadata, references, and likely se
 ```bash
 t2s stats
 t2s stats --json
+t2s stats --by-source
+t2s stats --by-channel
+t2s stats --timeline
+t2s stats --by-source --by-channel --timeline
 ```
 
+| Option | Default | Meaning |
+|---|---|---|
+| `--by-source` | off | Add a "By source" table |
+| `--by-channel` | off | Add a "Top channels" table |
+| `--timeline` | off | Add a "Timeline" table for the last 12 ISO weeks |
+| `--json` | off | Machine-readable output |
+
 Shows thread/skill counts, status distribution, category distribution, and recent events.
+
+The three flags combine. Sections print in order after "By category" and before
+"Recent events": By source, Top channels, Timeline.
+
+- `By source` lists each source with its thread count and the number of distinct
+  skills referencing at least one of its threads, sorted by threads then source.
+  A skill that references threads from two sources counts in both rows.
+- `Top channels` shows the top 10 channels with at least one skill, sorted by
+  skills, then threads, then channel name.
+- `Timeline` reports ingests (threads ingested in the week) and distills (skills
+  created in the week) per ISO week, oldest first, ending with the current week.
+  Week boundaries use local time.
+
+A section with no rows prints one short line instead of a table. On an empty
+workspace the human output prints a single hint line and no tables.
+
+The JSON object always contains `by_source`, `by_channel`, and `timeline`; the
+flags do not change the JSON payload. Existing keys stay unchanged.
 
 ---
 
