@@ -363,6 +363,68 @@ class CLITests(unittest.TestCase):
         self.assertIn("python", output)
         self.assertIn("workspace", output)
 
+    def test_doctor_reports_schema_version(self):
+        self.run_cli("init")
+        self.run_cli("list")
+        code, output, _ = self.run_cli("doctor", "--json")
+        self.assertEqual(code, 0)
+        checks = {row["check"]: row for row in json.loads(output)}
+        self.assertIn("schema", checks)
+        self.assertTrue(checks["schema"]["ok"])
+        self.assertIn("v1", checks["schema"]["detail"])
+
+    def test_doctor_points_at_migrate_for_a_legacy_database(self):
+        self.run_cli("init")
+        self.run_cli("list")
+        db = self.home / "index.db"
+        conn = sqlite3.connect(str(db))
+        try:
+            conn.execute("PRAGMA user_version = 0")
+            conn.commit()
+        finally:
+            conn.close()
+        code, output, _ = self.run_cli("doctor", "--json")
+        self.assertEqual(code, 0)
+        checks = {row["check"]: row for row in json.loads(output)}
+        self.assertFalse(checks["schema"]["ok"])
+        self.assertIn("--migrate", checks["schema"]["detail"])
+
+    def test_doctor_migrate_stamps_a_legacy_database(self):
+        self.run_cli("init")
+        self.run_cli("list")
+        db = self.home / "index.db"
+        conn = sqlite3.connect(str(db))
+        try:
+            conn.execute("PRAGMA user_version = 0")
+            conn.commit()
+        finally:
+            conn.close()
+        code, output, _ = self.run_cli("doctor", "--migrate")
+        self.assertEqual(code, 0)
+        conn = sqlite3.connect(str(db))
+        try:
+            version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+        finally:
+            conn.close()
+        self.assertEqual(version, 1)
+        self.assertIn("schema", output)
+        self.assertIn("adopted existing index at schema v1", output)
+
+    def test_newer_database_is_refused_with_a_clean_error(self):
+        self.run_cli("init")
+        self.run_cli("list")
+        db = self.home / "index.db"
+        conn = sqlite3.connect(str(db))
+        try:
+            conn.execute("PRAGMA user_version = 99")
+            conn.commit()
+        finally:
+            conn.close()
+        code, output, _ = self.run_cli("list")
+        self.assertEqual(code, 1)
+        self.assertIn("newer", output)
+        self.assertIn("pip install -U thread-to-skill", output)
+
     def test_stats_breakdowns(self):
         self.init_and_distill()
         code, output, _ = self.run_cli("stats", "--json")

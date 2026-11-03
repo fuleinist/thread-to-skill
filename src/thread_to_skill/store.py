@@ -6,12 +6,21 @@ import datetime as dt
 import json
 import sqlite3
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from .models import Skill, Thread
 from .util import ensure_dir, now_iso
 
-SCHEMA = """
+SCHEMA_VERSION = 1
+
+Migration = Callable[[sqlite3.Connection], None]
+
+
+class StoreError(RuntimeError):
+    """Raised when the registry cannot be opened or upgraded safely."""
+
+
+BASELINE_SCHEMA = """
 PRAGMA journal_mode=WAL;
 
 CREATE TABLE IF NOT EXISTS threads (
@@ -81,6 +90,46 @@ CREATE VIRTUAL TABLE IF NOT EXISTS skills_fts USING fts5(
 TIMELINE_WEEKS = 12
 TOP_CHANNELS = 10
 
+# Ordered registry of schema upgrades. Each entry is (target_version, apply fn).
+# Version 1 is BASELINE_SCHEMA, so an empty registry is correct for v0.1.
+# Append a migration and bump SCHEMA_VERSION; never rewrite an old entry.
+MIGRATIONS: tuple[tuple[int, Migration], ...] = ()
+
+
+def inspect_schema(path: Path, *, target: int | None = None) -> dict[str, Any]:
+    """Read the on-disk schema version without changing the database."""
+    target_version = SCHEMA_VERSION if target is None else int(target)
+    result: dict[str, Any] = {
+        "exists": False,
+        "version": 0,
+        "target": target_version,
+        "pending": [],
+        "needs_upgrade": False,
+        "too_new": False,
+        "error": "",
+    }
+    db_path = Path(path)
+    if not db_path.exists():
+        result["needs_upgrade"] = False
+        return result
+    result["exists"] = True
+    try:
+        conn = sqlite3.connect(str(db_path))
+        try:
+            row = conn.execute("PRAGMA user_version").fetchone()
+            version = int(row[0]) if row else 0
+        finally:
+            conn.close()
+    except sqlite3.DatabaseError as exc:
+        result["error"] = str(exc)
+        result["needs_upgrade"] = True
+        return result
+    result["version"] = version
+    result["too_new"] = version > target_version
+    result["pending"] = [v for v, _ in MIGRATIONS if version < v <= target_version]
+    result["needs_upgrade"] = version < target_version
+    return result
+
 
 def _week_monday(day: dt.date) -> dt.date:
     """Monday of the ISO week that contains a local date."""
@@ -97,22 +146,139 @@ def _local_date(value: Any) -> dt.date | None:
 
 
 class Store:
-    def __init__(self, path: Path):
+    def __init__(
+        self,
+        path: Path,
+        *,
+        auto_migrate: bool = True,
+        migrations: Iterable[tuple[int, Migration]] | None = None,
+    ):
         self.path = Path(path)
         ensure_dir(self.path.parent)
+        self.migrations: tuple[tuple[int, Migration], ...] = (
+            MIGRATIONS if migrations is None else tuple(migrations)
+        )
+        self.schema_from = SCHEMA_VERSION
+        self.schema_to = SCHEMA_VERSION
+        self.pending_versions: list[int] = []
+        self.migrated_versions: list[int] = []
+        self.backup_path: Path | None = None
         self.conn = sqlite3.connect(str(self.path))
         self.conn.row_factory = sqlite3.Row
-        self.conn.executescript(SCHEMA)
-        self.fts_enabled = False
         try:
-            self.conn.executescript(FTS_SCHEMA)
-            self.fts_enabled = True
-        except sqlite3.DatabaseError:
+            self._prepare_schema(auto_migrate)
             self.fts_enabled = False
-        self.conn.commit()
+            try:
+                self.conn.executescript(FTS_SCHEMA)
+                self.fts_enabled = True
+            except sqlite3.DatabaseError:
+                self.fts_enabled = False
+            self.conn.commit()
+        except Exception:
+            self.conn.close()
+            raise
 
     def close(self) -> None:
         self.conn.close()
+
+    # ------------------------------------------------------------------ schema
+    def schema_info(self) -> dict[str, Any]:
+        """Return the schema state this connection opened with."""
+        return {
+            "version": self.schema_from,
+            "target": self.schema_to,
+            "pending": list(self.pending_versions),
+            "migrated": list(self.migrated_versions),
+            "backup": str(self.backup_path) if self.backup_path else None,
+        }
+
+    def _read_version(self) -> int:
+        row = self.conn.execute("PRAGMA user_version").fetchone()
+        return int(row[0]) if row else 0
+
+    def _has_baseline(self) -> bool:
+        row = self.conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'skills'"
+        ).fetchone()
+        return row is not None
+
+    def _stamp(self, version: int) -> None:
+        self.conn.execute(f"PRAGMA user_version = {int(version)}")
+        self.conn.commit()
+
+    def _backup(self) -> Path:
+        stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        target = self.path.with_name(f"{self.path.name}.bak-{stamp}")
+        suffix = 1
+        while target.exists():
+            target = self.path.with_name(f"{self.path.name}.bak-{stamp}-{suffix}")
+            suffix += 1
+        destination = sqlite3.connect(str(target))
+        try:
+            self.conn.backup(destination)
+        finally:
+            destination.close()
+        return target
+
+    def _prepare_schema(self, auto_migrate: bool) -> None:
+        current = self._read_version()
+        target = SCHEMA_VERSION
+        self.schema_from = current
+        self.schema_to = target
+        fresh = not self._has_baseline()
+        if fresh:
+            # A new or empty file: create the baseline, then migrate it forward
+            # like any other database. BASELINE_SCHEMA is always version 1.
+            self.conn.executescript(BASELINE_SCHEMA)
+            self._stamp(1)
+            current = 1
+            self.schema_from = 1
+        if current > target:
+            raise StoreError(
+                f"{self.path.name} is newer than this build: schema version {current}, "
+                f"but version {target} is supported. Upgrade thread-to-skill before you "
+                "open this workspace: pip install -U thread-to-skill"
+            )
+        self.pending_versions = [v for v, _ in self.migrations if current < v <= target]
+        if current == target:
+            return
+        if not auto_migrate:
+            return
+        self._apply_migrations(current, target, backup=not fresh)
+
+    def _apply_migrations(self, current: int, target: int, *, backup: bool = True) -> None:
+        pending = [(v, fn) for v, fn in self.migrations if current < v <= target]
+        if not pending:
+            # Legacy database from before version stamping: adopt the baseline.
+            self._stamp(target)
+            self.schema_from = target
+            self.pending_versions = []
+            return
+        if backup:
+            self.backup_path = self._backup()
+        previous_isolation = self.conn.isolation_level
+        self.conn.isolation_level = None
+        try:
+            self.conn.execute("BEGIN IMMEDIATE")
+            for version, apply in pending:
+                apply(self.conn)
+                self.conn.execute(f"PRAGMA user_version = {int(version)}")
+                self.migrated_versions.append(version)
+            self.conn.execute("COMMIT")
+        except Exception as exc:
+            try:
+                self.conn.execute("ROLLBACK")
+            except sqlite3.Error:
+                pass
+            raise StoreError(
+                f"Schema migration from version {current} to {target} failed: {exc}. "
+                "No changes were applied. "
+                f"Backup kept at {self.backup_path}"
+            ) from exc
+        finally:
+            self.conn.isolation_level = previous_isolation
+        self.schema_from = target
+        self.pending_versions = []
 
     # ------------------------------------------------------------------ threads
     def add_thread(self, thread: Thread) -> None:

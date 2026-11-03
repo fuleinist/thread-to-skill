@@ -21,7 +21,7 @@ from .models import Thread
 from .providers import ProviderError, get_provider
 from .redact import redact_thread
 from .search import format_suggestions, suggest_skills
-from .store import Store
+from .store import Store, StoreError, inspect_schema
 from .taxonomy import all_category_keys, category_label
 from .util import atomic_write_json, human_number, now_iso, safe_console_text, truncate, unique_slug
 from .validate import validate_config_skills, validate_skill_dir
@@ -685,6 +685,32 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             checks.append(("sqlite", config.db_path.exists(), str(config.db_path)))
         except ConfigError as exc:
             checks.append(("config", False, str(exc)))
+    migrations_applied: list[int] = []
+    backup_path = ""
+    schema_note = ""
+    if config and config.db_path.exists():
+        report = inspect_schema(config.db_path)
+        if args.migrate and report["needs_upgrade"]:
+            store = Store(config.db_path)
+            _OPEN_STORES.append(store)
+            info = store.schema_info()
+            migrations_applied = info["migrated"]
+            backup_path = info["backup"] or ""
+            updated = inspect_schema(config.db_path)
+            if not migrations_applied and updated["version"] != report["version"]:
+                schema_note = f"adopted existing index at schema v{updated['version']}"
+            report = updated
+        if report["too_new"]:
+            detail = (
+                f"v{report['version']} is newer than v{report['target']}; "
+                "upgrade thread-to-skill"
+            )
+            checks.append(("schema", False, detail))
+        elif report["needs_upgrade"]:
+            detail = f"v{report['version']} -> v{report['target']}; run `t2s doctor --migrate`"
+            checks.append(("schema", False, detail))
+        else:
+            checks.append(("schema", True, f"v{report['version']}"))
     checks.append(("t2s on PATH", shutil.which("t2s") is not None, shutil.which("t2s") or "not found"))
     for env_name in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
         checks.append((env_name, bool(os.environ.get(env_name)), "set" if os.environ.get(env_name) else "not set"))
@@ -697,6 +723,15 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     for name, ok, detail in checks:
         marker = green("ok") if ok else yellow("warn")
         _print(f"{marker:<6} {name:<18} {detail}")
+    if migrations_applied or backup_path or schema_note:
+        _print("")
+    if migrations_applied:
+        versions = ", ".join(f"v{version}" for version in migrations_applied)
+        _print(f"applied migrations: {versions}")
+    if schema_note:
+        _print(schema_note)
+    if backup_path:
+        _print(f"backup: {backup_path}")
     _print("")
     _print(dim("Run `t2s validate --all` to check generated skills."))
     return 0
@@ -823,6 +858,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = sub.add_parser("doctor", help="Check the local environment")
     doctor.add_argument("--json", action="store_true")
+    doctor.add_argument("--migrate", action="store_true", help="Apply pending database migrations")
     doctor.set_defaults(func=cmd_doctor)
 
     version = sub.add_parser("version", help="Print the version")
@@ -842,7 +878,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return int(args.func(args))
-    except (ConfigError, DistillError, DuplicateSkill, ProviderError, FileNotFoundError, ValueError, KeyError) as exc:
+    except (ConfigError, DistillError, DuplicateSkill, ProviderError, StoreError, FileNotFoundError, ValueError, KeyError) as exc:
         _print(red(f"error: {exc}"))
         return 1
     except KeyboardInterrupt:
