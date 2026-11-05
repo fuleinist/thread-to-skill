@@ -315,9 +315,18 @@ flags do not change the JSON payload. Existing keys stay unchanged.
 ```bash
 t2s doctor
 t2s doctor --json
+t2s doctor --migrate
 ```
 
-Checks Python version, workspace, SQLite file, `t2s` on `PATH`, and provider environment variables.
+Checks Python version, workspace, SQLite file, schema version, `t2s` on `PATH`,
+and provider environment variables.
+
+The `schema` line shows the database version. When the index is older than the
+running tool, the line names the pending versions and points at `--migrate`.
+`t2s doctor --migrate` backs up the database to `index.db.bak-<stamp>` and
+applies the pending migrations. The command prints each applied version and the
+backup path. A pre-versioning index is adopted at the current version, then the
+command says so. The check fails when a database is newer than the tool.
 
 ---
 

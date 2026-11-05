@@ -60,6 +60,30 @@ store.save_skill ──► skills + skills_fts
 
 `index.db` uses WAL mode.
 
+### Schema versioning
+
+`PRAGMA user_version` holds the schema version. `store.SCHEMA_VERSION` is the
+version this build expects. `store.MIGRATIONS` is an ordered tuple of
+`(version, apply)` pairs, and version 1 is the baseline schema.
+
+Opening an older database applies every pending migration. The sequence is:
+
+1. Copy the database to `index.db.bak-<stamp>` with the SQLite backup API.
+2. Run the pending migrations inside one `BEGIN IMMEDIATE` transaction.
+3. Stamp `user_version` after each step.
+4. Commit. A failure rolls back and leaves the backup in place.
+
+The tool refuses a database that is newer than itself. A downgrade could lose
+columns it does not know about. `t2s doctor` reports the state, and
+`t2s doctor --migrate` performs the upgrade on demand.
+
+Rules for new migrations:
+
+- Append a migration. Never edit a released entry.
+- Bump `SCHEMA_VERSION` in the same commit.
+- Copy data forward. Keep the old table until the transaction commits, then drop it.
+- Never recreate a table destructively to add a column.
+
 ### `threads`
 
 | Column | Purpose |

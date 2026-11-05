@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - `t2s stats --by-source`, `--by-channel`, and `--timeline`: per-source thread and skill counts, a top-channels table limited to channels with at least one skill, and a last-12-ISO-weeks table of weekly ingest and distill counts. `t2s stats --json` always includes the `by_source`, `by_channel`, and `timeline` keys; an empty workspace prints a hint line instead of tables.
 - `t2s ingest` skips threads whose `content_hash` matches the stored row: no database write, no `threads/<id>.json` rewrite, and `ingested_at` stays as it was. `--force` rewrites every thread anyway. Each result item reports a `status` of `added`, `updated`, or `skipped`, `t2s ingest --json` prints an object with the three counts plus the `threads` array, and the human output lists only changed threads with a summary of the counts.
+- Schema versioning for `index.db`. New databases stamp `PRAGMA user_version` with the current version. Older databases back up to `index.db.bak-<stamp>` before any change. They then apply pending migrations inside one transaction. The tool refuses a database that is newer than itself, with an actionable message. `t2s doctor` reports the version. `t2s doctor --migrate` applies pending migrations on demand.
 
 ## [0.1.0] — 2026-11-01
 
