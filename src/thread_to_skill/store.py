@@ -426,6 +426,7 @@ class Store:
         tag: str = "",
         status: str = "",
         limit: int = 500,
+        include_archived: bool = False,
     ) -> list[Skill]:
         clauses = []
         params: list[Any] = []
@@ -438,6 +439,8 @@ class Store:
         if status:
             clauses.append("status = ?")
             params.append(status)
+        elif not include_archived:
+            clauses.append("status <> 'archived'")
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
         rows = self.conn.execute(
             f"SELECT * FROM skills{where} ORDER BY confidence DESC, updated_at DESC LIMIT ?",
@@ -468,7 +471,7 @@ class Store:
                     SELECT s.*, bm25(skills_fts) AS rank
                     FROM skills_fts
                     JOIN skills s ON s.slug = skills_fts.slug
-                    WHERE skills_fts MATCH ?
+                    WHERE skills_fts MATCH ? AND s.status <> 'archived'
                     ORDER BY rank
                     LIMIT ?
                     """,
@@ -488,7 +491,8 @@ class Store:
         rows = self.conn.execute(
             """
             SELECT * FROM skills
-            WHERE name LIKE ? OR description LIKE ? OR tags LIKE ? OR body LIKE ?
+            WHERE (name LIKE ? OR description LIKE ? OR tags LIKE ? OR body LIKE ?)
+              AND status <> 'archived'
             ORDER BY confidence DESC
             LIMIT ?
             """,
@@ -528,6 +532,33 @@ class Store:
 
     def archive_skill(self, slug: str) -> None:
         self.update_skill_fields(slug, status="archived", updated_at=now_iso())
+
+    def delete_skill(self, slug: str) -> bool:
+        """Remove one skill row and its search index row. Returns False for an unknown slug."""
+        row = self.conn.execute("SELECT slug FROM skills WHERE slug = ?", (slug,)).fetchone()
+        if row is None:
+            return False
+        if self.fts_enabled:
+            self.conn.execute("DELETE FROM skills_fts WHERE slug = ?", (slug,))
+        self.conn.execute("DELETE FROM skills WHERE slug = ?", (slug,))
+        self.conn.commit()
+        return True
+
+    def delete_thread(self, thread_id: str) -> bool:
+        """Remove one thread row. Returns False for an unknown thread."""
+        row = self.conn.execute("SELECT id FROM threads WHERE id = ?", (thread_id,)).fetchone()
+        if row is None:
+            return False
+        self.conn.execute("DELETE FROM threads WHERE id = ?", (thread_id,))
+        self.conn.commit()
+        return True
+
+    def thread_referenced_by_other_skill(self, thread_id: str, slug: str) -> bool:
+        """True when another skill still lists this thread in its provenance."""
+        for row in self.conn.execute("SELECT slug, source_threads FROM skills WHERE slug <> ?", (slug,)):
+            if thread_id in json.loads(row["source_threads"]):
+                return True
+        return False
 
     # ------------------------------------------------------------------- events
     def record_event(self, kind: str, *, skill_slug: str = "", thread_id: str = "", data: dict[str, Any] | None = None) -> None:
