@@ -155,6 +155,8 @@ t2s list --json
 
 Columns: slug, category, confidence, version, status, uses, title.
 
+Archived skills are hidden unless you pass `--status archived`.
+
 ---
 
 ## `t2s show`
@@ -166,6 +168,48 @@ t2s show checkout-integration-tests-fail --json
 ```
 
 `--raw` prints the full `SKILL.md`.
+
+---
+
+## `t2s archive`
+
+```bash
+t2s archive checkout-integration-tests-fail
+```
+
+Sets `status=archived` and keeps the bundle on disk. Archived skills stay out of `t2s list`
+and `t2s suggest`. `t2s list --status archived` shows them.
+
+---
+
+## `t2s unarchive`
+
+```bash
+t2s unarchive checkout-integration-tests-fail
+```
+
+Restores an archived skill to `active`.
+
+---
+
+## `t2s delete`
+
+```bash
+t2s delete checkout-integration-tests-fail --yes
+t2s delete checkout-integration-tests-fail --yes --keep-thread
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--yes` | off | Skip the confirmation prompt |
+| `--keep-thread` | off | Keep the source threads and provenance |
+
+Delete moves the bundle to `.thread2skill/trash/<slug>-<stamp>/` and then removes the row from
+`index.db`. It never shreds the bundle. Without `--keep-thread`, it also removes the source threads
+that no other skill references, and moves those files into the same trash directory.
+
+In a non-interactive shell the command refuses to run without `--yes`. In an interactive shell it
+asks you to type the slug.
 
 ---
 

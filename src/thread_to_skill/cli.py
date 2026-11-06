@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import os
 import shutil
@@ -23,7 +24,7 @@ from .redact import redact_thread
 from .search import format_suggestions, suggest_skills
 from .store import Store, StoreError, inspect_schema
 from .taxonomy import all_category_keys, category_label
-from .util import atomic_write_json, human_number, now_iso, safe_console_text, truncate, unique_slug
+from .util import atomic_write_json, ensure_dir, human_number, now_iso, safe_console_text, truncate, unique_slug
 from .validate import validate_config_skills, validate_skill_dir
 
 
@@ -430,6 +431,122 @@ def cmd_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def _trash_root(config: Config, slug: str) -> Path:
+    stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    root = config.trash_dir / f"{slug}-{stamp}"
+    suffix = 1
+    while root.exists():
+        suffix += 1
+        root = config.trash_dir / f"{slug}-{stamp}-{suffix}"
+    return root
+
+
+def _move_to_trash(source: Path, target: Path) -> bool:
+    if not source.exists():
+        return False
+    ensure_dir(target.parent)
+    shutil.move(str(source), str(target))
+    return True
+
+
+def _confirm_delete(slug: str) -> None:
+    if not sys.stdin.isatty():
+        raise ValueError("Refusing to delete without --yes in a non-interactive shell.")
+    _print(f"This moves {slug} to the workspace trash and removes its index row.")
+    answer = input(f"Type {slug} to confirm: ").strip()
+    if answer != slug:
+        raise ValueError("Cancelled. Nothing was deleted.")
+
+
+def cmd_archive(args: argparse.Namespace) -> int:
+    _, store = _open(args)
+    skill = _resolve_skill(store, args.slug)
+    if skill is None:
+        raise ValueError(f"Unknown skill: {args.slug}")
+    if skill.status == "archived":
+        if args.json:
+            _print(json.dumps({"slug": skill.slug, "status": "archived", "changed": False}, ensure_ascii=False))
+            return 0
+        _print(f"{skill.slug} is already archived")
+        return 0
+    store.archive_skill(skill.slug)
+    store.record_event("archived", skill_slug=skill.slug)
+    if args.json:
+        _print(json.dumps({"slug": skill.slug, "status": "archived", "changed": True}, ensure_ascii=False))
+        return 0
+    _print(f"{green('archived')} {skill.slug} - bundle kept, hidden from list and suggest")
+    return 0
+
+
+def cmd_unarchive(args: argparse.Namespace) -> int:
+    _, store = _open(args)
+    skill = _resolve_skill(store, args.slug)
+    if skill is None:
+        raise ValueError(f"Unknown skill: {args.slug}")
+    if skill.status != "archived":
+        if args.json:
+            _print(json.dumps({"slug": skill.slug, "status": skill.status, "changed": False}, ensure_ascii=False))
+            return 0
+        _print(f"{skill.slug} is not archived (status {skill.status})")
+        return 0
+    store.update_skill_fields(skill.slug, status="active", updated_at=now_iso())
+    store.record_event("unarchived", skill_slug=skill.slug)
+    if args.json:
+        _print(json.dumps({"slug": skill.slug, "status": "active", "changed": True}, ensure_ascii=False))
+        return 0
+    _print(f"{green('unarchived')} {skill.slug} - restored to active")
+    return 0
+
+
+def cmd_delete(args: argparse.Namespace) -> int:
+    config, store = _open(args)
+    skill = _resolve_skill(store, args.slug)
+    if skill is None:
+        raise ValueError(f"Unknown skill: {args.slug}")
+    if not args.yes:
+        _confirm_delete(skill.slug)
+    bundle = Path(skill.path)
+    trash_root = _trash_root(config, skill.slug)
+    bundle_moved = _move_to_trash(bundle, trash_root / bundle.name)
+    removed_threads: list[str] = []
+    if not args.keep_thread:
+        for thread_id in skill.source_threads:
+            if store.thread_referenced_by_other_skill(thread_id, skill.slug):
+                continue
+            normalized = _normalized_path(config, thread_id)
+            _move_to_trash(normalized, trash_root / "threads" / normalized.name)
+            if store.delete_thread(thread_id):
+                removed_threads.append(thread_id)
+    removed = store.delete_skill(skill.slug)
+    store.record_event(
+        "deleted",
+        skill_slug=skill.slug,
+        data={"trash": str(trash_root), "threads": removed_threads, "keep_thread": bool(args.keep_thread)},
+    )
+    if args.json:
+        _print(
+            json.dumps(
+                {
+                    "slug": skill.slug,
+                    "deleted": removed,
+                    "bundle_moved": bundle_moved,
+                    "trash": str(trash_root),
+                    "threads_removed": removed_threads,
+                },
+                ensure_ascii=False,
+            )
+        )
+        return 0
+    _print(f"{green('deleted')} {skill.slug} - bundle moved to {trash_root}")
+    if removed_threads:
+        _print(dim(f"  {len(removed_threads)} source thread(s) moved to trash with it"))
+    elif args.keep_thread:
+        _print(dim("  source threads kept (--keep-thread)"))
+    else:
+        _print(dim("  no source threads to remove"))
+    return 0
+
+
 def cmd_search(args: argparse.Namespace) -> int:
     _, store = _open(args)
     results = store.search_skills(args.query, limit=args.limit)
@@ -804,6 +921,23 @@ def build_parser() -> argparse.ArgumentParser:
     show.add_argument("--raw", action="store_true", help="Print SKILL.md")
     show.add_argument("--json", action="store_true")
     show.set_defaults(func=cmd_show)
+
+    archive = sub.add_parser("archive", help="Archive a skill but keep its files")
+    archive.add_argument("slug")
+    archive.add_argument("--json", action="store_true")
+    archive.set_defaults(func=cmd_archive)
+
+    unarchive = sub.add_parser("unarchive", help="Restore an archived skill to active")
+    unarchive.add_argument("slug")
+    unarchive.add_argument("--json", action="store_true")
+    unarchive.set_defaults(func=cmd_unarchive)
+
+    delete = sub.add_parser("delete", help="Move a skill bundle to the workspace trash and remove its row")
+    delete.add_argument("slug")
+    delete.add_argument("--yes", action="store_true", help="Skip the confirmation prompt")
+    delete.add_argument("--keep-thread", action="store_true", help="Keep the source threads and provenance")
+    delete.add_argument("--json", action="store_true")
+    delete.set_defaults(func=cmd_delete)
 
     search = sub.add_parser("search", help="Full-text search over local skills")
     search.add_argument("query")
