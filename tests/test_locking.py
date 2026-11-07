@@ -128,7 +128,9 @@ class LockingTests(unittest.TestCase):
 
     def test_config_lock_path_is_the_workspace_lock_file(self):
         config = Config.create(self.home)
-        self.assertEqual(config.lock_path, self.home / ".lock")
+        self.assertEqual(config.lock_path.name, ".lock")
+        self.assertEqual(config.lock_path.parent, config.home)
+        self.assertEqual(config.lock_path, config.home / ".lock")
 
     def run_cli(self, *args):
         stdout, stderr = StringIO(), StringIO()
