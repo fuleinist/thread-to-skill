@@ -6,6 +6,7 @@
 src/thread_to_skill/
 ├── cli.py            # argparse CLI, output, command handlers
 ├── config.py         # workspace discovery, config.json
+├── locking.py        # advisory workspace write lock
 ├── models.py         # Message, Thread, Skill
 ├── util.py           # slugs, timestamps, hashing, JSON, tokenization
 ├── taxonomy.py       # stable categories, tags, category scoring
@@ -137,6 +138,35 @@ The tool is a CLI and a directory. There is no account, API, daemon, or database
 
 The standard library covers HTTP, JSON, SQLite, regex, and CLI parsing. This keeps installation trivial and makes the test suite fast. Pillow is only used by `scripts/make_assets.py`, not by the package.
 
+### Advisory workspace write lock
+
+SQLite serialises single statements. A write command runs a sequence that is not
+atomic: check duplicate, render, insert, copy. Two processes in one workspace can
+therefore produce duplicate slugs, half-written bundles, or a skill row with no
+directory.
+
+Write commands take the lock in `<workspace>/.lock` for the whole run. The file
+holds `pid`, `hostname`, and `started_at`. A second process waits up to `--wait`
+seconds (default 2). It then exits with status 1 and names the holder. Hooks pass
+`--wait 0` so they never block.
+
+Read-only commands (`list`, `show`, `search`, `suggest`, `stats`, `version`) never
+take the lock. `suggest` is read-only by design: a hook may call it while a
+distill runs.
+
+A lock is reclaimed when either condition holds:
+
+- the same host reports the PID as gone, or
+- the lock is older than `STALE_AFTER_SECONDS` (900).
+
+A lock from another host is left alone while it is young, because its process
+cannot be checked from here.
+
+Release deletes the file only while the record is still ours. A process that lost
+the lock to a reclaim cannot delete the new holder's file. Nothing here is
+enforced by the OS. The lock is a convention between processes that agree to
+follow it.
+
 ### Open format over proprietary store
 
 The primary output is `SKILL.md` in the Agent Skills layout. SQLite is an index, not the source of truth. Deleting the index does not delete skills.
@@ -192,6 +222,7 @@ The suite uses `unittest` and synthetic fixtures:
 - redaction patterns and idempotency
 - offline extraction, normalization, rendering, validation
 - CLI end-to-end: init, ingest, distill, list, show, search, suggest, feedback, install, hooks, validate, stats, doctor
+- workspace lock: contention, stale reclaim, read-only exemption, release on error
 - duplicate merge/skip behavior
 - hook merge and idempotency
 

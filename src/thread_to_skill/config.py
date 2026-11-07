@@ -45,6 +45,10 @@ class Config:
         return self.home / "trash"
 
     @property
+    def lock_path(self) -> Path:
+        return self.home / ".lock"
+
+    @property
     def default_provider(self) -> str:
         return str(self.data.get("provider") or "auto")
 
