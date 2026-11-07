@@ -8,8 +8,10 @@ at `<workspace>/.lock` for the whole run; read-only commands never take it.
 
 The lock is a JSON file with `pid`, `hostname`, and `started_at`. A lock whose
 process is gone on the same host, or that is older than the stale threshold, is
-reclaimed. Nothing here is enforced by the OS: the lock is a convention between
-processes that agree to follow it.
+reclaimed. Liveness is probed per platform: on POSIX with `os.kill(pid, 0)`, and
+on Windows with `OpenProcess` because signal 0 is `CTRL_C_EVENT` there.
+Nothing here is enforced by the OS: the lock is a convention between processes
+that agree to follow it.
 """
 
 from __future__ import annotations
@@ -56,6 +58,8 @@ def pid_is_alive(pid: Any) -> bool:
         return False
     if number <= 0:
         return False
+    if os.name == "nt":
+        return _windows_pid_is_alive(number)
     try:
         os.kill(number, 0)
     except ProcessLookupError:
@@ -66,6 +70,33 @@ def pid_is_alive(pid: Any) -> bool:
     except OSError:
         return False
     return True
+
+
+def _windows_pid_is_alive(pid: int) -> bool:
+    """Probe a PID on Windows.
+
+    `os.kill(pid, 0)` is not a probe there: signal 0 is `CTRL_C_EVENT`, so it
+    sends a console interrupt to the target's process group instead.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    process_query_limited_information = 0x1000
+    error_access_denied = 5
+    still_active = 259
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
+    if not handle:
+        # A denied open still proves that the process exists.
+        return ctypes.get_last_error() == error_access_denied
+    try:
+        code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return True
+        return code.value == still_active
+    finally:
+        kernel32.CloseHandle(handle)
 
 
 def lock_age_seconds(record: dict[str, Any] | None, path: Path) -> float:

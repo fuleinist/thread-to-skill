@@ -132,6 +132,16 @@ class LockingTests(unittest.TestCase):
         self.assertEqual(config.lock_path.parent, config.home)
         self.assertEqual(config.lock_path, config.home / ".lock")
 
+    def test_pid_probe_reports_live_and_dead_pids_without_signalling(self):
+        # On Windows os.kill(pid, 0) sends CTRL_C_EVENT, so a naive probe
+        # interrupts this process instead of testing it.
+        self.assertTrue(locking.pid_is_alive(os.getpid()))
+        self.assertFalse(locking.pid_is_alive(DEAD_PID))
+        self.assertFalse(locking.pid_is_alive(0))
+        self.assertFalse(locking.pid_is_alive(-1))
+        self.assertFalse(locking.pid_is_alive("not-a-pid"))
+        self.assertFalse(locking.pid_is_alive(None))
+
     def run_cli(self, *args):
         stdout, stderr = StringIO(), StringIO()
         with redirect_stdout(stdout), redirect_stderr(stderr):
