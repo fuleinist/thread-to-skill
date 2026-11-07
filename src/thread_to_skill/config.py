@@ -41,6 +41,10 @@ class Config:
         return self.home / "prompts"
 
     @property
+    def trash_dir(self) -> Path:
+        return self.home / "trash"
+
+    @property
     def default_provider(self) -> str:
         return str(self.data.get("provider") or "auto")
 

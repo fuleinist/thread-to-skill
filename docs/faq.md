@@ -64,7 +64,10 @@ No. v0.1 automates retrieval, proactive matching, confidence, and review flags. 
 
 ## Can I delete or archive a skill?
 
-Delete the directory under `.thread2skill/skills/<slug>/` and remove its row from `index.db` if you need a hard delete. Archiving is on the roadmap; `status` already supports `archived` in the database.
+Yes. Run `t2s archive <slug>` to hide a skill but keep its files. Run `t2s unarchive <slug>` to
+restore it. Run `t2s delete <slug> --yes` to retire a skill. Delete moves the bundle to
+`.thread2skill/trash/` and removes the index row, so you can recover the files later. Add
+`--keep-thread` to keep the source threads and provenance.
 
 ## Does it work on Windows?
 

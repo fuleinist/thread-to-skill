@@ -1,6 +1,7 @@
 import json
 import shutil
 import sqlite3
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -469,6 +470,211 @@ class CLITests(unittest.TestCase):
         self.assertEqual(stats["by_channel"], [])
         self.assertEqual(len(stats["timeline"]), 12)
         self.assertTrue(all(entry["ingests"] == 0 and entry["distills"] == 0 for entry in stats["timeline"]))
+
+    # ------------------------------------------------- archive, unarchive, delete
+
+    def run_cli_with_stdin(self, stdin, *args):
+        original = sys.stdin
+        sys.stdin = stdin
+        try:
+            return self.run_cli(*args)
+        finally:
+            sys.stdin = original
+
+    def stored_skill_status(self, slug: str) -> str:
+        conn = sqlite3.connect(str(self.home / "index.db"))
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute("SELECT status FROM skills WHERE slug = ?", (slug,)).fetchone()
+        finally:
+            conn.close()
+        return row["status"] if row else ""
+
+    def skill_rows(self, slug: str) -> int:
+        conn = sqlite3.connect(str(self.home / "index.db"))
+        try:
+            return conn.execute("SELECT COUNT(*) FROM skills WHERE slug = ?", (slug,)).fetchone()[0]
+        finally:
+            conn.close()
+
+    def fts_rows(self, slug: str) -> int | None:
+        conn = sqlite3.connect(str(self.home / "index.db"))
+        try:
+            exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'skills_fts'"
+            ).fetchone()
+            if not exists:
+                return None
+            return conn.execute("SELECT COUNT(*) FROM skills_fts WHERE slug = ?", (slug,)).fetchone()[0]
+        finally:
+            conn.close()
+
+    def thread_rows(self) -> int:
+        conn = sqlite3.connect(str(self.home / "index.db"))
+        try:
+            return conn.execute("SELECT COUNT(*) FROM threads").fetchone()[0]
+        finally:
+            conn.close()
+
+    def test_archive_hides_skill_from_list_and_search(self):
+        _, skill = self.init_and_distill()
+        slug = skill["slug"]
+        code, output, _ = self.run_cli("archive", slug)
+        self.assertEqual(code, 0)
+        self.assertIn("archived", output)
+        self.assertEqual(self.stored_skill_status(slug), "archived")
+        code, output, _ = self.run_cli("list", "--json")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(output), [])
+        code, output, _ = self.run_cli("list")
+        self.assertEqual(code, 0)
+        self.assertNotIn(slug, output)
+        code, output, _ = self.run_cli("list", "--status", "archived", "--json")
+        self.assertEqual(code, 0)
+        self.assertEqual([entry["slug"] for entry in json.loads(output)], [slug])
+        code, output, _ = self.run_cli("search", "postgres")
+        self.assertEqual(code, 0)
+        self.assertNotIn(slug, output)
+
+    def test_archive_keeps_bundle_and_fts_row(self):
+        _, skill = self.init_and_distill()
+        slug = skill["slug"]
+        bundle = Path(skill["path"]) / "SKILL.md"
+        self.assertTrue(bundle.exists())
+        before = self.fts_rows(slug)
+        code, _, _ = self.run_cli("archive", slug)
+        self.assertEqual(code, 0)
+        self.assertTrue(bundle.exists())
+        self.assertEqual(self.fts_rows(slug), before)
+        code, output, _ = self.run_cli("archive", slug)
+        self.assertEqual(code, 0)
+        self.assertIn("already archived", output)
+
+    def test_suggest_skips_archived_until_unarchived(self):
+        _, skill = self.init_and_distill()
+        slug = skill["slug"]
+        prompt = "integration tests are flaky with postgres"
+        code, output, _ = self.run_cli("suggest", prompt, "--threshold", "0.0")
+        self.assertEqual(code, 0)
+        self.assertIn(slug, output)
+        code, _, _ = self.run_cli("archive", slug)
+        self.assertEqual(code, 0)
+        code, output, _ = self.run_cli("suggest", prompt, "--threshold", "0.0")
+        self.assertEqual(code, 0)
+        self.assertNotIn(slug, output)
+        code, output, _ = self.run_cli("unarchive", slug)
+        self.assertEqual(code, 0)
+        self.assertIn("active", output)
+        self.assertEqual(self.stored_skill_status(slug), "active")
+        code, output, _ = self.run_cli("suggest", prompt, "--threshold", "0.0")
+        self.assertEqual(code, 0)
+        self.assertIn(slug, output)
+        code, output, _ = self.run_cli("unarchive", slug)
+        self.assertEqual(code, 0)
+        self.assertIn("not archived", output)
+
+    def test_delete_moves_bundle_to_trash_and_removes_rows(self):
+        _, skill = self.init_and_distill()
+        slug = skill["slug"]
+        bundle = Path(skill["path"])
+        self.assertTrue(bundle.exists())
+        code, output, _ = self.run_cli("delete", slug, "--yes")
+        self.assertEqual(code, 0)
+        self.assertIn("deleted", output)
+        self.assertFalse(bundle.exists())
+        self.assertEqual(self.skill_rows(slug), 0)
+        fts = self.fts_rows(slug)
+        if fts is not None:
+            self.assertEqual(fts, 0)
+        trash = self.home / "trash"
+        self.assertTrue(trash.is_dir())
+        entries = [entry for entry in trash.iterdir() if entry.is_dir()]
+        self.assertEqual(len(entries), 1)
+        self.assertTrue((entries[0] / bundle.name / "SKILL.md").exists())
+        code, output, _ = self.run_cli("list", "--json")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(output), [])
+        code, output, _ = self.run_cli("search", "postgres")
+        self.assertEqual(code, 0)
+        self.assertNotIn(slug, output)
+
+    def test_delete_refuses_without_yes_in_a_non_interactive_shell(self):
+        _, skill = self.init_and_distill()
+        slug = skill["slug"]
+        bundle = Path(skill["path"])
+        code, output, _ = self.run_cli_with_stdin(StringIO(""), "delete", slug)
+        self.assertEqual(code, 1)
+        self.assertIn("Refusing to delete without --yes", output)
+        self.assertTrue(bundle.exists())
+        self.assertEqual(self.skill_rows(slug), 1)
+        self.assertFalse((self.home / "trash").exists())
+
+    def test_delete_prompt_requires_the_exact_slug(self):
+        _, skill = self.init_and_distill()
+        slug = skill["slug"]
+        bundle = Path(skill["path"])
+
+        class FakeTTY:
+            def __init__(self, answer: str):
+                self.answer = answer
+
+            def isatty(self) -> bool:
+                return True
+
+            def readline(self) -> str:
+                return self.answer + "\n"
+
+        code, output, _ = self.run_cli_with_stdin(FakeTTY("not-the-slug"), "delete", slug)
+        self.assertEqual(code, 1)
+        self.assertIn("Cancelled", output)
+        self.assertTrue(bundle.exists())
+        self.assertEqual(self.skill_rows(slug), 1)
+
+        code, output, _ = self.run_cli_with_stdin(FakeTTY(slug), "delete", slug)
+        self.assertEqual(code, 0)
+        self.assertFalse(bundle.exists())
+        self.assertEqual(self.skill_rows(slug), 0)
+
+    def test_delete_removes_the_source_thread_by_default(self):
+        thread_id, skill = self.init_and_distill()
+        normalized = self.home / "threads" / f"{thread_id}.json"
+        self.assertTrue(normalized.exists())
+        self.assertEqual(self.thread_rows(), 1)
+        code, _, _ = self.run_cli("delete", skill["slug"], "--yes")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.thread_rows(), 0)
+        self.assertFalse(normalized.exists())
+        trash = self.home / "trash"
+        moved = list(trash.rglob(normalized.name))
+        self.assertEqual(len(moved), 1)
+
+    def test_delete_keep_thread_retains_provenance(self):
+        thread_id, skill = self.init_and_distill()
+        normalized = self.home / "threads" / f"{thread_id}.json"
+        code, _, _ = self.run_cli("delete", skill["slug"], "--yes", "--keep-thread")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.thread_rows(), 1)
+        self.assertTrue(normalized.exists())
+        self.assertEqual(self.skill_rows(skill["slug"]), 0)
+
+    def test_delete_refuses_an_unknown_or_ambiguous_slug(self):
+        thread_id, skill = self.init_and_distill()
+        code, output, _ = self.run_cli("delete", "no-such-skill", "--yes")
+        self.assertEqual(code, 1)
+        self.assertIn("Unknown skill", output)
+        self.assertEqual(self.skill_rows(skill["slug"]), 1)
+        self.assertTrue((Path(skill["path"]) / "SKILL.md").exists())
+
+        for extra_slug in ("alpha-one", "alpha-two"):
+            code, _, _ = self.run_cli(
+                "distill", thread_id, "--provider", "offline", "--slug", extra_slug, "--on-duplicate", "new"
+            )
+            self.assertEqual(code, 0)
+        code, output, _ = self.run_cli("delete", "alpha", "--yes")
+        self.assertEqual(code, 1)
+        self.assertIn("ambiguous", output)
+        self.assertEqual(self.skill_rows("alpha-one"), 1)
+        self.assertEqual(self.skill_rows("alpha-two"), 1)
 
 
 if __name__ == "__main__":
