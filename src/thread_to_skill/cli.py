@@ -18,6 +18,7 @@ from .distill import DistillError, DuplicateSkill, ManualPromptReady, distill_th
 from .feedback import apply_feedback, feedback_summary
 from .hooks import ALL_HOOK_HARNESSES, install_hooks
 from .install import ALL_HARNESSES, DEFAULT_HARNESSES, install_many
+from .locking import DEFAULT_WAIT_SECONDS, LockError, acquire, release
 from .models import Thread
 from .providers import ProviderError, get_provider
 from .redact import redact_thread
@@ -96,6 +97,20 @@ def _home_path(args: argparse.Namespace) -> Path:
 
 def _config(args: argparse.Namespace) -> Config:
     return Config.load(_home_path(args))
+
+
+# Read-only commands never take the workspace lock. `version` touches no
+# workspace, so it needs no lock either.
+READ_ONLY_COMMANDS = {"list", "show", "search", "suggest", "stats", "version"}
+
+
+def _lock_path(args: argparse.Namespace) -> Path:
+    """The lock file for the workspace. The workspace itself may not exist yet."""
+    return Config(home=_home_path(args)).lock_path
+
+
+def _takes_lock(args: argparse.Namespace) -> bool:
+    return args.command not in READ_ONLY_COMMANDS
 
 
 _OPEN_STORES: list[Store] = []
@@ -869,6 +884,13 @@ def build_parser() -> argparse.ArgumentParser:
         description="Turn Slack, Discord, and WhatsApp threads into reusable agent skills.",
     )
     parser.add_argument("--home", help="Workspace directory (default: ./.thread2skill or T2S_HOME)")
+    parser.add_argument(
+        "--wait",
+        type=float,
+        metavar="SECONDS",
+        default=DEFAULT_WAIT_SECONDS,
+        help="Seconds to wait for the workspace write lock before failing. Read-only commands never wait.",
+    )
     parser.add_argument("--version", action="version", version=f"thread-to-skill {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -1011,7 +1033,17 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
-        return int(args.func(args))
+        if not _takes_lock(args):
+            return int(args.func(args))
+        lock_file = _lock_path(args)
+        handle = acquire(lock_file, float(args.wait))
+        try:
+            return int(args.func(args))
+        finally:
+            release(lock_file, handle)
+    except LockError as exc:
+        _print(red(f"error: {exc}"))
+        return 1
     except (ConfigError, DistillError, DuplicateSkill, ProviderError, StoreError, FileNotFoundError, ValueError, KeyError) as exc:
         _print(red(f"error: {exc}"))
         return 1
