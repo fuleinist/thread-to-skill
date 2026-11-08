@@ -238,6 +238,10 @@ t2s feedback <slug> --outcome failed --note "the migration still drifted"
 - Confidence moves up or down. After repeated failures with no successes, the status becomes `needs-review`.
 - New evidence can be folded into the same skill with `t2s distill <thread> --on-duplicate merge`, which increments the version and keeps the provenance.
 
+`t2s review` surfaces the other half of the loop. It lists stale, failing, unused,
+duplicate, conflicting, and low-confidence skills. The command reads only. `t2s review --fix`
+archives a needs-review skill only when that skill has zero successes.
+
 What v0.1 automates: retrieval, proactive matching, confidence, and review flags. What stays explicit: rewriting skill content. A fully autonomous rewrite loop is roadmap work, not a hidden behavior. Everything is local and inspectable, so you can always see why a skill was suggested and what changed.
 
 ---
@@ -301,6 +305,7 @@ A PyPI release is planned. Until then, install from GitHub.
 | `t2s hooks doctor` | Verify installed hooks, their files, and the resolved command |
 | `t2s validate` | Check generated skills against the Agent Skills format |
 | `t2s stats` | Show workspace counts, categories, and recent events |
+| `t2s review` | Find stale, failing, unused, duplicate, and conflicting skills |
 | `t2s doctor` | Check Python, workspace, SQLite, PATH, and provider keys |
 
 Full options: [docs/cli.md](docs/cli.md).
