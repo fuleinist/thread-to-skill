@@ -212,6 +212,8 @@ t2s install <slug> --harness all
 
 Hooks call `t2s suggest`. Keep `t2s` on `PATH`, or set `T2S_BIN` to its absolute path. Hook files are merged into existing settings, backed up before writing, and never duplicated on re-run.
 
+Nothing appears after a prompt that should match? Run `t2s hooks doctor`. It names the failing host and the reason. The exit code is non-zero when a detected hook is broken.
+
 > **Scope:** v0.1 writes the documented hook shapes and covers them with fixtures. Agent harness APIs move quickly; after installing a hook, run a prompt that should match and verify the suggestion appears in your host version. Details and manual snippets: [docs/hooks.md](docs/hooks.md).
 
 ---
@@ -296,6 +298,7 @@ A PyPI release is planned. Until then, install from GitHub.
 | `t2s feedback <slug>` | Record `worked`, `failed`, `accepted`, or `suggested` |
 | `t2s install <slug>` | Copy a skill into harness skill roots |
 | `t2s hooks install` | Write proactive-suggestion hooks for supported harnesses |
+| `t2s hooks doctor` | Verify installed hooks, their files, and the resolved command |
 | `t2s validate` | Check generated skills against the Agent Skills format |
 | `t2s stats` | Show workspace counts, categories, and recent events |
 | `t2s doctor` | Check Python, workspace, SQLite, PATH, and provider keys |

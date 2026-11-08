@@ -303,6 +303,39 @@ Existing settings are backed up before writing. Managed entries are idempotent.
 
 ---
 
+## `t2s hooks doctor`
+
+```bash
+t2s hooks doctor
+t2s hooks doctor --harness claude --scope project
+t2s hooks doctor --json
+```
+
+Checks each host that has a hook file. It reads the file, parses the JSON or
+YAML, resolves the `t2s` command, and runs one `suggest` call with a sample
+prompt. The host itself never runs.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--harness` | `all` | Comma-separated: `claude`, `cursor`, `deepseek`, `hermes`, `openclaw` |
+| `--scope` | `user` | `user` or `project` |
+| `--project-root` | cwd | Project root for `project` scope |
+| `--json` | off | Machine-readable output for CI |
+
+| Status | Meaning |
+|---|---|
+| `ok` | The hook file is valid and the sample call returned a suggestion |
+| `missing` | No hook file is installed for that host |
+| `invalid` | The file is malformed, incomplete, or the command is wrong |
+| `command-not-found` | The hook exists but `t2s` or `T2S_BIN` does not resolve |
+| `no-match` | The sample call ran and found no skill above the threshold |
+| `error` | The sample call failed or timed out |
+
+Exit code is 1 when a detected hook is `invalid`, `command-not-found`, or
+`error`. A `no-match` result is not a failure.
+
+---
+
 ## `t2s validate`
 
 ```bash

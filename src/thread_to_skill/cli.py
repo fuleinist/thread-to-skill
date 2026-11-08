@@ -16,7 +16,14 @@ from .adapters import load_path
 from .config import Config, ConfigError, find_home
 from .distill import DistillError, DuplicateSkill, ManualPromptReady, distill_threads, save_skill
 from .feedback import apply_feedback, feedback_summary
-from .hooks import ALL_HOOK_HARNESSES, install_hooks
+from .hooks import (
+    ALL_HOOK_HARNESSES,
+    BROKEN_DOCTOR_STATUSES,
+    DOCTOR_SAMPLE_PROMPT,
+    DOCTOR_TIMEOUT_SECONDS,
+    doctor_hooks,
+    install_hooks,
+)
 from .install import ALL_HARNESSES, DEFAULT_HARNESSES, install_many
 from .locking import DEFAULT_WAIT_SECONDS, LockError, acquire, release
 from .models import Thread
@@ -110,6 +117,9 @@ def _lock_path(args: argparse.Namespace) -> Path:
 
 
 def _takes_lock(args: argparse.Namespace) -> bool:
+    if getattr(args, "action", "") == "doctor":
+        # `t2s hooks doctor` only reads hook files and runs one sample call.
+        return False
     return args.command not in READ_ONLY_COMMANDS
 
 
@@ -677,6 +687,8 @@ def cmd_install(args: argparse.Namespace) -> int:
 
 
 def cmd_hooks(args: argparse.Namespace) -> int:
+    if getattr(args, "action", "install") == "doctor":
+        return cmd_hooks_doctor(args)
     harnesses = _split(args.harness, ["all"])
     unknown = [name for name in harnesses if name not in ALL_HOOK_HARNESSES and name != "all"]
     if unknown:
@@ -702,6 +714,41 @@ def cmd_hooks(args: argparse.Namespace) -> int:
         _print("")
         _print(dim("Hooks call `t2s suggest`; keep `t2s` on PATH or set T2S_BIN."))
     return 0
+
+
+def cmd_hooks_doctor(args: argparse.Namespace) -> int:
+    harnesses = _split(args.harness, ["all"])
+    unknown = [name for name in harnesses if name not in ALL_HOOK_HARNESSES and name != "all"]
+    if unknown:
+        raise ValueError(f"Unknown hook harness: {', '.join(unknown)}")
+    results = doctor_hooks(
+        args.harness,
+        scope=args.scope,
+        project_root=Path(args.project_root) if args.project_root else None,
+        prompt=args.prompt or DOCTOR_SAMPLE_PROMPT,
+        timeout=float(args.timeout),
+    )
+    broken = sum(1 for result in results if result.status in BROKEN_DOCTOR_STATUSES)
+    detected = sum(1 for result in results if result.status != "missing")
+    if args.json:
+        _print(json.dumps([result.__dict__ for result in results], ensure_ascii=False, indent=2, default=str))
+        return 1 if broken else 0
+    for result in results:
+        if result.status == "ok":
+            _print(green(result.line()))
+        elif result.status in BROKEN_DOCTOR_STATUSES:
+            _print(red(result.line()))
+        elif result.status == "no-match":
+            _print(yellow(result.line()))
+        else:
+            _print(dim(result.line()))
+    _print("")
+    _print(f"{len(results)} host(s) checked · {detected} hook(s) detected · {broken} broken")
+    sample = next((result.sample_command for result in results if result.sample_command), "")
+    if sample:
+        _print(dim(f"one sample call: {sample}"))
+    _print(dim("The doctor reads hook files and runs one sample call. It never runs the host."))
+    return 1 if broken else 0
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
@@ -991,13 +1038,24 @@ def build_parser() -> argparse.ArgumentParser:
     install.add_argument("--json", action="store_true")
     install.set_defaults(func=cmd_install)
 
-    hooks = sub.add_parser("hooks", help="Install proactive suggestion hooks")
-    hooks.add_argument("action", choices=["install"])
-    hooks.add_argument("--harness", default="all", help="Comma-separated harnesses, or 'all'")
-    hooks.add_argument("--scope", default="user", choices=["user", "project"])
-    hooks.add_argument("--project-root", default="")
-    hooks.add_argument("--dry-run", action="store_true")
-    hooks.add_argument("--json", action="store_true")
+    hooks = sub.add_parser("hooks", help="Install or check proactive suggestion hooks")
+    hooks_actions = hooks.add_subparsers(dest="action", required=True)
+
+    hooks_install = hooks_actions.add_parser("install", help="Write proactive-suggestion hooks")
+    hooks_install.add_argument("--harness", default="all", help="Comma-separated harnesses, or 'all'")
+    hooks_install.add_argument("--scope", default="user", choices=["user", "project"])
+    hooks_install.add_argument("--project-root", default="")
+    hooks_install.add_argument("--dry-run", action="store_true")
+    hooks_install.add_argument("--json", action="store_true")
+
+    hooks_doctor = hooks_actions.add_parser("doctor", help="Check installed hooks without running the host")
+    hooks_doctor.add_argument("--harness", default="all", help="Comma-separated harnesses, or 'all'")
+    hooks_doctor.add_argument("--scope", default="user", choices=["user", "project"])
+    hooks_doctor.add_argument("--project-root", default="")
+    hooks_doctor.add_argument("--prompt", default=DOCTOR_SAMPLE_PROMPT, help="Sample prompt for the single `suggest` call")
+    hooks_doctor.add_argument("--timeout", type=float, default=DOCTOR_TIMEOUT_SECONDS, help="Seconds before the sample call counts as failed")
+    hooks_doctor.add_argument("--json", action="store_true")
+
     hooks.set_defaults(func=cmd_hooks)
 
     validate = sub.add_parser("validate", help="Validate generated skills")
