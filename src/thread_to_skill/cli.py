@@ -29,6 +29,7 @@ from .locking import DEFAULT_WAIT_SECONDS, LockError, acquire, release
 from .models import Thread
 from .providers import ProviderError, get_provider
 from .redact import redact_thread
+from .review import apply_fixes, reason_counts, review_payload, review_skills
 from .search import format_suggestions, suggest_skills
 from .store import Store, StoreError, inspect_schema
 from .taxonomy import all_category_keys, category_label
@@ -108,7 +109,7 @@ def _config(args: argparse.Namespace) -> Config:
 
 # Read-only commands never take the workspace lock. `version` touches no
 # workspace, so it needs no lock either.
-READ_ONLY_COMMANDS = {"list", "show", "search", "suggest", "stats", "version"}
+READ_ONLY_COMMANDS = {"list", "show", "search", "suggest", "stats", "review", "version"}
 
 
 def _lock_path(args: argparse.Namespace) -> Path:
@@ -120,6 +121,9 @@ def _takes_lock(args: argparse.Namespace) -> bool:
     if getattr(args, "action", "") == "doctor":
         # `t2s hooks doctor` only reads hook files and runs one sample call.
         return False
+    if args.command == "review":
+        # `t2s review` only reads. `--fix` writes, so only that path takes the lock.
+        return bool(getattr(args, "fix", False))
     return args.command not in READ_ONLY_COMMANDS
 
 
@@ -852,6 +856,87 @@ def cmd_stats(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_review(args: argparse.Namespace) -> int:
+    config, store = _open(args)
+    stale_days = args.stale_days if args.stale_days is not None else config.review_stale_days
+    confidence = (
+        args.confidence if args.confidence is not None else config.review_confidence_threshold
+    )
+    duplicate_threshold = (
+        args.duplicate_threshold
+        if args.duplicate_threshold is not None
+        else config.review_duplicate_threshold
+    )
+    conflict_threshold = (
+        args.conflict_threshold
+        if args.conflict_threshold is not None
+        else config.review_conflict_threshold
+    )
+    findings = review_skills(
+        store,
+        stale_days=stale_days,
+        confidence_threshold=confidence,
+        duplicate_threshold=duplicate_threshold,
+        conflict_threshold=conflict_threshold,
+    )
+    checked = len(store.list_skills(limit=1000))
+    applied: dict[str, Any] = {"archived": [], "grouped": []}
+    if args.fix:
+        applied = apply_fixes(store, findings, allow_duplicate_groups=args.yes)
+
+    if args.json:
+        payload = review_payload(
+            findings,
+            stale_days=stale_days,
+            confidence_threshold=confidence,
+            duplicate_threshold=duplicate_threshold,
+            conflict_threshold=conflict_threshold,
+            checked=checked,
+        )
+        payload["applied"] = applied
+        _print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+
+    if checked == 0:
+        _print("No skills to review yet. Run `t2s distill <thread>` first.")
+        return 0
+    if not findings:
+        _print(green(f"No skills need review ({checked} checked, stale after {stale_days} days)."))
+        return 0
+
+    _print(bold(f"Review: {len(findings)} of {checked} skills need attention"))
+    rows = [
+        [
+            finding.slug,
+            ", ".join(finding.reasons),
+            f"{finding.age_days}d" if finding.age_days is not None else "-",
+            finding.action,
+        ]
+        for finding in findings
+    ]
+    _print(_table(["SKILL", "REASONS", "AGE", "ACTION"], rows))
+    counts = reason_counts(findings)
+    _print("")
+    _print("  ".join(f"{reason}={count}" for reason, count in counts.items() if count))
+    _print("")
+    for finding in findings:
+        _print(f"  {finding.slug}: {finding.detail}")
+    _print("")
+    if args.fix:
+        archived = applied["archived"]
+        if archived:
+            _print(green(f"archived {len(archived)} skill(s): " + ", ".join(archived)))
+        else:
+            _print("Nothing to archive.")
+        if args.yes:
+            _print(f"grouped {len(applied['grouped'])} duplicate(s) in skill metadata")
+        else:
+            _print(dim("duplicate groups were not recorded; add --yes to record them"))
+    else:
+        _print(dim("Read-only. `t2s review --fix` archives needs-review skills with zero successes."))
+    return 0
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     home = _home_path(args)
     checks: list[tuple[str, bool, str]] = []
@@ -1069,6 +1154,16 @@ def build_parser() -> argparse.ArgumentParser:
     stats.add_argument("--by-channel", action="store_true", help="Show the top channels with skills")
     stats.add_argument("--timeline", action="store_true", help="Show activity for the last 12 ISO weeks")
     stats.set_defaults(func=cmd_stats)
+
+    review = sub.add_parser("review", help="Find stale, failing, unused, duplicate, and conflicting skills")
+    review.add_argument("--stale-days", type=int, default=None, help="Days without use before a skill is stale (default 90)")
+    review.add_argument("--confidence", type=float, default=None, help="Low-confidence threshold (default 0.4)")
+    review.add_argument("--duplicate-threshold", type=float, default=None, help="Similarity for a duplicate pair (default 0.55)")
+    review.add_argument("--conflict-threshold", type=float, default=None, help="Similarity for a conflict candidate (default 0.45)")
+    review.add_argument("--fix", action="store_true", help="Archive needs-review skills with zero successes")
+    review.add_argument("--yes", action="store_true", help="With --fix, also record duplicate groups in metadata")
+    review.add_argument("--json", action="store_true")
+    review.set_defaults(func=cmd_review)
 
     doctor = sub.add_parser("doctor", help="Check the local environment")
     doctor.add_argument("--json", action="store_true")

@@ -387,6 +387,82 @@ flags do not change the JSON payload. Existing keys stay unchanged.
 
 ---
 
+## `t2s review`
+
+```bash
+t2s review
+t2s review --json
+t2s review --fix
+t2s review --fix --yes
+t2s review --stale-days 30
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--stale-days N` | `90` | Days without use before a skill is stale |
+| `--confidence F` | `0.4` | Low-confidence threshold |
+| `--duplicate-threshold F` | `0.55` | Similarity that makes a duplicate pair |
+| `--conflict-threshold F` | `0.45` | Similarity that makes a conflict candidate |
+| `--fix` | off | Archive needs-review skills that have zero successes |
+| `--yes` | off | With `--fix`, record duplicate groups in metadata |
+| `--json` | off | Machine-readable output |
+
+Review reports the skills that need attention. Each reason comes from stored data.
+
+| Reason | Rule |
+|---|---|
+| `stale` | `last_used_at` is older than the threshold. The check falls back to `updated_at` when the skill was never used. |
+| `failing` | `failed` is greater than `worked`, or `status` is `needs-review`. Equal counts are not failing. |
+| `unused` | `suggested` is above zero and `accepted` is zero. |
+| `duplicate` | The skill is similar to a skill with higher confidence. |
+| `conflicting` | Two near-duplicate skills state opposite decision rules about the same subject. |
+| `low-confidence` | `confidence` is below the threshold and the skill has no recorded use. |
+
+A skill can carry more than one reason. Reasons print in the order above.
+
+The table shows the slug, the reasons, the age in days, and a suggested action. Age counts
+from `last_used_at`, or from `updated_at` when the skill was never used.
+
+Review reads only. It never writes and it never takes the workspace lock. `--fix` takes
+the lock and applies two safe actions:
+
+- It archives a skill only when `status` is `needs-review` and `worked` is zero.
+- With `--yes`, it records duplicate groups in the skill metadata under `review.duplicate_of`.
+
+`--fix` never deletes a file. It never merges a body. `t2s unarchive` reverses an archive.
+
+The thresholds live under `review` in `config.json`. A flag overrides the config value.
+
+```json
+{
+  "review": {
+    "stale_days": 90,
+    "confidence_threshold": 0.4,
+    "duplicate_threshold": 0.55,
+    "conflict_threshold": 0.45
+  }
+}
+```
+
+### JSON output
+
+The object has a fixed shape:
+
+- `checked`: the number of non-archived skills that review read.
+- `stale_days`, `confidence_threshold`, `duplicate_threshold`, `conflict_threshold`: the values in use.
+- `counts`: one key per reason, in reason order. A reason with no finding reports `0`.
+- `findings`: one object per skill, sorted by slug.
+- `applied`: `{"archived": [], "grouped": []}`. The arrays hold the results of this run.
+
+Each finding has `slug`, `name`, `status`, `reasons`, `age_days`, `confidence`,
+`worked`, `failed`, `suggested`, `accepted`, `detail`, and `action`. `age_days` is
+`null` when no timestamp can be parsed.
+
+The exit code is `0` when review runs, even when it finds problems. Gate automation
+on the `counts` object or on the length of `findings`.
+
+---
+
 ## `t2s doctor`
 
 ```bash

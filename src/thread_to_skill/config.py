@@ -65,6 +65,39 @@ class Config:
     def gap_minutes(self) -> int:
         return int(self.data.get("gap_minutes") or 60)
 
+    @property
+    def review(self) -> dict[str, Any]:
+        value = self.data.get("review")
+        return dict(value) if isinstance(value, dict) else {}
+
+    @property
+    def review_stale_days(self) -> int:
+        try:
+            return int(self.review.get("stale_days", 90))
+        except (TypeError, ValueError):
+            return 90
+
+    @property
+    def review_confidence_threshold(self) -> float:
+        try:
+            return float(self.review.get("confidence_threshold", 0.4))
+        except (TypeError, ValueError):
+            return 0.4
+
+    @property
+    def review_duplicate_threshold(self) -> float:
+        try:
+            return float(self.review.get("duplicate_threshold", 0.55))
+        except (TypeError, ValueError):
+            return 0.55
+
+    @property
+    def review_conflict_threshold(self) -> float:
+        try:
+            return float(self.review.get("conflict_threshold", 0.45))
+        except (TypeError, ValueError):
+            return 0.45
+
     def save(self) -> None:
         ensure_dir(self.home)
         atomic_write_json(self.home / CONFIG_FILENAME, self.data)
@@ -85,6 +118,12 @@ class Config:
                 "redact": redact,
                 "gap_minutes": 60,
                 "redact_patterns": [],
+                "review": {
+                    "stale_days": 90,
+                    "confidence_threshold": 0.4,
+                    "duplicate_threshold": 0.55,
+                    "conflict_threshold": 0.45,
+                },
             },
             created=True,
         )
