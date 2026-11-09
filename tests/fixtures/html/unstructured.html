@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Runbook article</title>
+    <style>body { font-family: system-ui; }</style>
+    <script>console.log("analytics chrome that must never appear");</script>
+  </head>
+  <body>
+    <nav class="site-nav">
+      <a href="/">Docs</a>
+      <a href="/runbook">Runbook</a>
+      <span>site chrome that must never appear</span>
+    </nav>
+    <header>
+      <h1>Runbook header chrome that must never appear</h1>
+    </header>
+
+    <main class="article">
+      <h2>Rebuilding the widget cache</h2>
+      <p>This article describes how to rebuild the widget cache after a failed nightly job.</p>
+      <p>Stop the worker, drain the queue, then run the rebuild on a single host.</p>
+      <ul>
+        <li>Confirm the cache entry counts match the manifest.</li>
+        <li>Do not re-enable the nightly job until the counts agree twice.</li>
+      </ul>
+      <p>The page has no repeated author or timestamp structure.</p>
+    </main>
+
+    <footer>End of article.</footer>
+  </body>
+</html>

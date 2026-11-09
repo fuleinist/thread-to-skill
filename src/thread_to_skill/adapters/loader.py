@@ -11,10 +11,11 @@ from pathlib import Path
 from ..models import Thread
 from .discord import load_discord
 from .generic import load_json, load_jsonl, load_markdown, load_text
+from .html_transcript import load_html
 from .slack import load_slack
 from .whatsapp import ANDROID_RE, IOS_RE, load_whatsapp
 
-FORMATS = {"auto", "slack", "discord", "whatsapp", "telegram", "jsonl", "json", "markdown", "text"}
+FORMATS = {"auto", "slack", "discord", "whatsapp", "telegram", "jsonl", "json", "markdown", "text", "html"}
 
 
 def _read_prefix(path: Path, limit: int = 200_000) -> str:
@@ -37,6 +38,8 @@ def detect_format(path: Path) -> str:
     suffix = path.suffix.lower()
     if suffix == ".zip":
         return "zip"
+    if suffix in {".html", ".htm"}:
+        return "html"
     if suffix == ".jsonl" or suffix == ".ndjson":
         return "jsonl"
     if suffix in {".md", ".markdown", ".mdx"}:
@@ -113,6 +116,8 @@ def load_path(
         threads = load_markdown(path, gap_minutes, channel, title)
     elif fmt == "text":
         threads = load_text(path, gap_minutes, channel, title)
+    elif fmt == "html":
+        threads = load_html(path, gap_minutes, channel, title)
     else:
         raise ValueError(f"Unsupported format: {fmt}")
     return [thread for thread in threads if thread.messages]
