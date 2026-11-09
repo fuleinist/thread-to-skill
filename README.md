@@ -176,7 +176,7 @@ metadata:
   <img src="docs/assets/architecture.svg" alt="Architecture: capture, ingest and redact, distill, portable skill, index, proactive hooks, harnesses, feedback" width="100%">
 </p>
 
-1. **Capture** — Slack workspace exports, DiscordChatExporter JSON, WhatsApp `.txt`, Telegram JSON, JSONL, generic JSON, Markdown, plain text, and ZIPs.
+1. **Capture** — Slack workspace exports, DiscordChatExporter JSON, WhatsApp `.txt`, Telegram JSON, JSONL, generic JSON, Markdown, plain text, saved HTML pages (`.html` / `.htm`, best-effort: repeated author-and-timestamp blocks, otherwise one document), and ZIPs.
 2. **Ingest & redact** — reconstruct threads, split unthreaded messages on a quiet gap, normalize timestamps and mentions, then remove tokens, keys, emails, phone numbers, private IPs, and credentials in URLs. Custom regexes are supported.
 3. **Distill** — offline heuristics or an LLM extract decisions, ordered steps, conditions, pitfalls, and verification checks. Every claim keeps its source message IDs.
 4. **Render** — write a validated `SKILL.md`, a redacted `references/thread.md`, and machine-readable `metadata.json`.

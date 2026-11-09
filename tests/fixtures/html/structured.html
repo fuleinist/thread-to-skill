@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Support chat export</title>
+    <style>body { font-family: system-ui; }</style>
+    <script>console.log("analytics chrome that must never appear");</script>
+  </head>
+  <body>
+    <nav class="site-nav">
+      <a href="/">Dashboard</a>
+      <a href="/chats">Chats</a>
+      <span>site chrome that must never appear</span>
+    </nav>
+    <header>
+      <h1>Support chat header chrome that must never appear</h1>
+      <p>Ticket 4821</p>
+    </header>
+
+    <main class="transcript">
+      <article class="message">
+        <div class="author">Ana Ruiz</div>
+        <span class="timestamp">2026-02-11 09:14:02Z</span>
+        <div class="body">The nightly rebuild failed on the cache worker. Can you confirm which host ran it?</div>
+      </article>
+
+      <article class="message">
+        <div class="author">Sam Ito</div>
+        <span class="timestamp">2026-02-11 09:21:11Z</span>
+        <div class="body">It ran on cache-2. I drained the queue before restarting the worker.</div>
+      </article>
+
+      <article class="article-body">
+        <p class="meta">
+          <span class="author">Priya Nair</span>
+          <span class="time">2026-02-11 09:38:05Z</span>
+        </p>
+        <p>Decision: keep the queue drained until the next release, and do not re-enable the nightly job.</p>
+      </article>
+
+      <article class="message">
+        <div class="author">Mira Sol</div>
+        <span class="timestamp">2026-02-11 10:05:44Z</span>
+        <div class="body">Verify step: run the rebuild on one host only, then compare the cache entry counts.</div>
+      </article>
+
+      <article class="message">
+        <div class="author">Ben Okafor</div>
+        <span class="timestamp">2026-02-11 10:33:19Z</span>
+        <div class="body">Confirm the counts match the manifest twice before the job goes back on.</div>
+      </article>
+    </main>
+
+    <footer>End of export.</footer>
+  </body>
+</html>

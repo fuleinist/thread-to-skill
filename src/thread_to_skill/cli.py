@@ -1042,7 +1042,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     ingest = sub.add_parser("ingest", help="Load conversation exports into the local index")
     ingest.add_argument("paths", nargs="+", help="Files, directories, or ZIP exports")
-    ingest.add_argument("--format", default="auto", choices=["auto", "slack", "discord", "whatsapp", "telegram", "jsonl", "json", "markdown", "text"])
+    ingest.add_argument("--format", default="auto", choices=["auto", "slack", "discord", "whatsapp", "telegram", "jsonl", "json", "markdown", "text", "html"])
     ingest.add_argument("--gap-minutes", type=int, default=0, help="Split unthreaded messages on this quiet gap")
     ingest.add_argument("--channel", default="", help="Override the channel name")
     ingest.add_argument("--title", default="", help="Override the thread title")

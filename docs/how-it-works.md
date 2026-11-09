@@ -49,10 +49,21 @@ ingest ──► redact ──► normalize ──► distill ──► render �
 | Telegram JSON | `messages` with `from` fields | `reply_to_message_id` chains; quiet-gap fallback |
 | JSONL | one object per line | `thread_id` / `conversation_id`, otherwise quiet-gap windows |
 | Generic JSON | `messages` list or `{thread: [...]}` | `thread_id` / `conversation_id`, otherwise a single conversation |
+| HTML | `.html` / `.htm` | best-effort: repeated blocks that hold an author and a timestamp; otherwise one document |
 | Markdown | `.md` / `.markdown` | one document, section headings preserved |
 | Plain text | `.txt` that is not a WhatsApp export | one document |
 
 All timestamps are normalized to UTC ISO-8601. Slack and Discord mentions, channel links, and custom emoji are cleaned into readable text. Messages without text or attachments are dropped.
+
+HTML extraction is best-effort. `script`, `style`, `nav`, and `header` nodes are
+removed with their text, and a page is split into messages only when at least
+three blocks repeat the same shape and each holds an author node and a timestamp
+node in the same block element or within two levels of it. Anything weaker stays
+one document, because a wrong split is worse than a single document. The choice
+is recorded in `thread.extra` as `html_heuristic` (`blocks` or
+`single-document`) with `html_block_count`, and the fallback prints a
+`RuntimeWarning`. A timestamp that cannot be parsed keeps its raw text; a time is
+never invented.
 
 The default quiet gap is 60 minutes. Change it with `--gap-minutes` or `config.json`.
 
