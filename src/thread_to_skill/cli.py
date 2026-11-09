@@ -16,6 +16,7 @@ from .adapters import load_path
 from .config import Config, ConfigError, find_home
 from .distill import DistillError, DuplicateSkill, ManualPromptReady, distill_threads, save_skill
 from .feedback import apply_feedback, feedback_summary
+from .filters import MessageFilters
 from .hooks import (
     ALL_HOOK_HARNESSES,
     BROKEN_DOCTOR_STATUSES,
@@ -347,6 +348,13 @@ def cmd_distill(args: argparse.Namespace) -> int:
             category=args.category,
             tags=_split(args.tags),
             slug=args.slug,
+            filters=MessageFilters(
+                since=args.since,
+                until=args.until,
+                participants=tuple(_split(args.participants)),
+                max_messages=args.max_messages,
+                exclude_bots=args.exclude_bots,
+            ),
         )
     except ManualPromptReady as exc:
         _print(f"{yellow('manual')} Distillation prompt written to {exc.path}")
@@ -1053,6 +1061,20 @@ def build_parser() -> argparse.ArgumentParser:
     distill.add_argument("--category", default="", choices=[""] + all_category_keys())
     distill.add_argument("--tags", default="", help="Comma-separated extra tags")
     distill.add_argument("--slug", default="")
+    distill.add_argument("--since", default="", help="Keep messages dated on or after YYYY-MM-DD")
+    distill.add_argument("--until", default="", help="Keep messages dated on or before YYYY-MM-DD")
+    distill.add_argument(
+        "--participants",
+        default="",
+        help="Comma-separated authors; case-insensitive substring match",
+    )
+    distill.add_argument(
+        "--max-messages",
+        type=int,
+        default=0,
+        help="Keep the most recent N messages across the selected threads",
+    )
+    distill.add_argument("--exclude-bots", action="store_true", help="Drop messages from automation accounts")
     distill.add_argument("--on-duplicate", default="warn", choices=["warn", "skip", "merge", "new"])
     distill.add_argument("--install", default="", help="Comma-separated harnesses, or 'all'")
     distill.add_argument("--scope", default="user", choices=["user", "project"])

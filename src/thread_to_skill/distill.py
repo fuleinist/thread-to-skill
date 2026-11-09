@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import Config
+from .filters import FilterError, MessageFilters, apply_filters
 from .models import Skill, Thread
 from .offline import offline_distill
 from .providers import ManualProvider, Provider, ProviderError
@@ -320,9 +321,16 @@ def distill_threads(
     category: str = "",
     tags: list[str] | None = None,
     slug: str = "",
+    filters: MessageFilters | None = None,
 ) -> dict[str, Any]:
     if not threads:
         raise DistillError("No threads selected")
+    filter_record: dict[str, Any] = {"applied": False}
+    if filters is not None and filters.active:
+        try:
+            threads, filter_record = apply_filters(threads, filters)
+        except FilterError as exc:
+            raise DistillError(str(exc)) from exc
     prompt = build_prompt(threads)
     if provider.mode == "offline":
         data = offline_distill(threads)
@@ -344,7 +352,12 @@ def distill_threads(
             debug_path.write_text(raw, encoding="utf-8")
             raise DistillError(f"Could not parse provider output as JSON ({exc}). Raw output saved to {debug_path}") from exc
         data.setdefault("extractor", provider.name)
-    return normalize_data(data, threads, category_override=category, tags_extra=tags or [], slug_override=slug)
+    normalized = normalize_data(
+        data, threads, category_override=category, tags_extra=tags or [], slug_override=slug
+    )
+    if filter_record.get("applied"):
+        normalized["provenance"]["filters"] = filter_record
+    return normalized
 
 
 def merge_data(existing: Skill, incoming: dict[str, Any], threads: list[Thread]) -> dict[str, Any]:

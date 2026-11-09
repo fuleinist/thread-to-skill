@@ -110,6 +110,8 @@ t2s distill latest --provider openai --model gpt-4o-mini
 t2s distill latest --on-duplicate merge
 t2s distill latest --install claude,agents
 t2s distill latest --dry-run --json
+t2s distill latest --since 2026-10-01 --until 2026-10-07
+t2s distill latest --participants alice,bob --exclude-bots
 ```
 
 | Option | Default | Meaning |
@@ -124,6 +126,11 @@ t2s distill latest --dry-run --json
 | `--category` | inferred | Force a taxonomy category |
 | `--tags` | — | Comma-separated extra tags |
 | `--slug` | generated | Explicit slug |
+| `--since` | — | Keep messages dated on or after `YYYY-MM-DD` (inclusive) |
+| `--until` | — | Keep messages dated on or before `YYYY-MM-DD` (inclusive) |
+| `--participants` | — | Comma-separated authors; case-insensitive substring match |
+| `--max-messages` | `0` | Keep the most recent N messages across the selected threads |
+| `--exclude-bots` | off | Drop messages from automation accounts |
 | `--on-duplicate` | `warn` | `warn`, `skip`, `merge`, `new` |
 | `--install` | — | Comma-separated harnesses or `all` |
 | `--scope` | `user` | `user` or `project` |
@@ -140,6 +147,14 @@ Provider notes:
 - `ollama` reads `OLLAMA_HOST`.
 - `command` reads the full prompt on stdin and must write a JSON object to stdout.
 - `manual` writes a prompt to `prompts/` and exits 2.
+
+Filter notes:
+
+- Filters run before prompt construction and token budgeting.
+- `--max-messages` keeps chronological order and spans all selected threads.
+- A filter that removes every message stops the run with an error. It never writes an empty skill.
+- `metadata.json` records the window, the participants, and the message counts under `data.provenance.filters`. `SKILL.md` states the same slice in `## Source`.
+- A skill distilled from a three-day window does not claim to cover the whole channel.
 
 ---
 
