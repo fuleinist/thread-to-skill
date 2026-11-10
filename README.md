@@ -297,6 +297,7 @@ A PyPI release is planned. Until then, install from GitHub.
 | `t2s distill <thread...>` | Turn one or more threads into a skill |
 | `t2s list` | List skills with category, confidence, status, and usage |
 | `t2s show <slug>` | Show a skill, or `--raw` for the full `SKILL.md` |
+| `t2s diff <slug>` | Compare two stored versions of a skill, with `--stat` or `--json` |
 | `t2s search <query>` | Full-text search across local skills |
 | `t2s suggest <prompt>` | Rank skills for a prompt; used by hooks |
 | `t2s feedback <slug>` | Record `worked`, `failed`, `accepted`, or `suggested` |

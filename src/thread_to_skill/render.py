@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
 from .models import Thread
+from .store import DEFAULT_SNAPSHOT_KEEP, SNAPSHOT_FILES, list_snapshots, snapshot_dir
 from .taxonomy import category_label
 from .util import ensure_dir, now_iso, truncate
 
@@ -271,6 +273,37 @@ def make_metadata(
     }
 
 
+def snapshot_bundle(skill_dir: Path, version: int) -> Path | None:
+    """Copy the current files into `.versions/v<version>` before they are replaced.
+
+    A first render has nothing to keep, so it returns None.
+    """
+    if version < 1:
+        return None
+    target = snapshot_dir(skill_dir, version)
+    copied = False
+    for name in SNAPSHOT_FILES:
+        source = skill_dir / name
+        if not source.exists():
+            continue
+        ensure_dir(target)
+        shutil.copyfile(source, target / name)
+        copied = True
+    return target if copied else None
+
+
+def prune_snapshots(skill_dir: Path, keep: int = DEFAULT_SNAPSHOT_KEEP) -> list[int]:
+    """Delete the oldest snapshots beyond `keep`. The newest snapshot is never removed."""
+    keep = max(1, int(keep))
+    stored = list_snapshots(skill_dir)
+    removed = []
+    for version in stored[: len(stored) - keep]:
+        target = snapshot_dir(skill_dir, version)
+        shutil.rmtree(target)
+        removed.append(version)
+    return removed
+
+
 def write_skill_bundle(
     skills_dir: Path,
     slug: str,
@@ -283,6 +316,8 @@ def write_skill_bundle(
 ) -> tuple[Path, str, dict[str, Any]]:
     skill_dir = Path(skills_dir) / slug
     ensure_dir(skill_dir)
+    snapshot_bundle(skill_dir, version - 1)
+    prune_snapshots(skill_dir)
     ensure_dir(skill_dir / "references")
     body = render_skill_md(slug, data, version=version, created_at=created_at, updated_at=updated_at)
     (skill_dir / "SKILL.md").write_text(body, encoding="utf-8", newline="\n")

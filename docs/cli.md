@@ -184,6 +184,77 @@ t2s show checkout-integration-tests-fail --json
 
 `--raw` prints the full `SKILL.md`.
 
+When the skill has stored snapshots, the human output ends with a one-line summary
+of the latest merge: the version range, added lines, and removed lines. A skill
+with no snapshots prints nothing extra.
+
+---
+
+## `t2s diff`
+
+Compare two stored versions of a skill.
+
+```bash
+t2s diff checkout-integration-tests-fail
+t2s diff checkout-integration-tests-fail --from 1 --to 3
+t2s diff checkout-integration-tests-fail --stat
+t2s diff checkout-integration-tests-fail --json
+t2s diff checkout-integration-tests-fail --keep 5
+```
+
+| Option | Default | Meaning |
+|---|---|---|
+| `slug` | required | Skill slug, or a unique prefix |
+| `--from` | previous snapshot | Older version to read |
+| `--to` | current bundle | Newer version to read |
+| `--stat` | off | Print added and removed line counts per `##` section |
+| `--json` | off | Machine-readable output |
+| `--keep` | `10` | Prune to the newest N snapshots after the comparison |
+
+With no version flags, `diff` compares the two newest versions: the previous
+snapshot against the current `SKILL.md`. A skill that has only one version has
+nothing to compare and exits with an error. A version with no stored snapshot
+must be the current one; any other version is reported as unknown, with the
+versions that are available.
+
+After printing the diff, the command prunes the snapshot directory to the newest
+`--keep` versions. The newest snapshot is never removed. Pruned versions are
+reported on stdout, or on stderr with `--json`.
+
+`--stat` prints a table of per-section counts:
+
+```text
+SECTION        ADDED  REMOVED
+─────────────  ─────  ────────
+When to use       1        0
+Verification      0        2
+Total             1        2
+```
+
+`--json` prints one object:
+
+```json
+{
+  "slug": "checkout-integration-tests-fail",
+  "from": 2,
+  "to": 3,
+  "sections": [
+    {"name": "When to use", "added": 1, "removed": 0},
+    {"name": "Verification", "added": 0, "removed": 2}
+  ],
+  "added": 1,
+  "removed": 2
+}
+```
+
+### Version snapshots
+
+Every render copies the `SKILL.md` and `metadata.json` it is about to replace
+into `.versions/vN/` inside the skill bundle. Only a re-render writes a snapshot:
+a first render has nothing to keep. The newest `--keep` snapshots (default `10`)
+survive each call. Snapshots live inside the bundle, so they need no extra
+ignore rule, and `t2s delete` moves them with the bundle to the trash.
+
 ---
 
 ## `t2s archive`

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import difflib
 import json
 import os
 import shutil
@@ -30,9 +31,10 @@ from .locking import DEFAULT_WAIT_SECONDS, LockError, acquire, release
 from .models import Thread
 from .providers import ProviderError, get_provider
 from .redact import redact_thread
+from .render import prune_snapshots
 from .review import apply_fixes, reason_counts, review_payload, review_skills
 from .search import format_suggestions, suggest_skills
-from .store import Store, StoreError, inspect_schema
+from .store import DEFAULT_SNAPSHOT_KEEP, Store, StoreError, inspect_schema, list_snapshots, snapshot_dir
 from .taxonomy import all_category_keys, category_label
 from .util import atomic_write_json, ensure_dir, human_number, now_iso, safe_console_text, truncate, unique_slug
 from .validate import validate_config_skills, validate_skill_dir
@@ -79,6 +81,10 @@ def cyan(text: str) -> str:
 
 def _print(text: str = "") -> None:
     print(safe_console_text(text))
+
+
+def _print_err(text: str) -> None:
+    print(safe_console_text(text), file=sys.stderr)
 
 
 def _table(headers: list[str], rows: list[list[str]], max_width: int = 48) -> str:
@@ -205,6 +211,108 @@ def _skill_payload(skill) -> dict[str, Any]:
     payload = skill.to_dict()
     payload["metadata"] = skill.metadata
     return payload
+
+
+# ------------------------------------------------------------------ version snapshots
+
+
+def _stored_versions(skill_dir: Path) -> list[int]:
+    """Snapshot versions with a readable SKILL.md, oldest first."""
+    return [
+        version
+        for version in list_snapshots(skill_dir)
+        if (snapshot_dir(skill_dir, version) / "SKILL.md").exists()
+    ]
+
+
+def _available_versions(skill) -> list[int]:
+    """Stored snapshots plus the current bundle, oldest first."""
+    skill_dir = Path(skill.path)
+    versions = _stored_versions(skill_dir)
+    if (skill_dir / "SKILL.md").exists():
+        versions.append(int(skill.version))
+    return sorted(versions)
+
+
+def _read_version_text(skill, version: int) -> str:
+    """Read one version's SKILL.md, from its snapshot or from the live bundle."""
+    skill_dir = Path(skill.path)
+    snapshot = snapshot_dir(skill_dir, version) / "SKILL.md"
+    if snapshot.exists():
+        return snapshot.read_text(encoding="utf-8")
+    if version == int(skill.version):
+        return (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+    available = ", ".join(f"v{item}" for item in _available_versions(skill))
+    raise ValueError(f"Unknown version v{version} for {skill.slug}. Available: {available or 'none'}")
+
+
+def _version_label(skill, version: int) -> str:
+    """The path shown in a diff header."""
+    skill_dir = Path(skill.path)
+    if version == int(skill.version):
+        return f"{skill.slug}/SKILL.md"
+    return f"{skill.slug}/.versions/v{version}/SKILL.md"
+
+
+def _split_sections(text: str) -> dict[str, list[str]]:
+    """Group body lines under their top-level `##` heading.
+
+    Lines before the first heading are not attributed to a section.
+    """
+    sections: dict[str, list[str]] = {}
+    current = ""
+    for line in text.splitlines():
+        if line.startswith("## "):
+            current = line[3:].strip()
+            sections.setdefault(current, [])
+            continue
+        if current:
+            sections[current].append(line)
+    return sections
+
+
+def _change_counts(old: list[str], new: list[str]) -> tuple[int, int]:
+    """Count added and removed lines between two lists of lines."""
+    added = 0
+    removed = 0
+    matcher = difflib.SequenceMatcher(None, old, new)
+    for tag, old_start, old_end, new_start, new_end in matcher.get_opcodes():
+        if tag == "equal":
+            continue
+        removed += old_end - old_start
+        added += new_end - new_start
+    return added, removed
+
+
+def _diff_counts(old_text: str, new_text: str) -> dict[str, Any]:
+    """Whole-file counts plus per-section counts, sections in the order printed."""
+    old_lines = old_text.splitlines()
+    new_lines = new_text.splitlines()
+    added, removed = _change_counts(old_lines, new_lines)
+    old_sections = _split_sections(old_text)
+    new_sections = _split_sections(new_text)
+    names = list(new_sections) + [name for name in old_sections if name not in new_sections]
+    sections = []
+    for name in names:
+        section_added, section_removed = _change_counts(old_sections.get(name, []), new_sections.get(name, []))
+        sections.append({"name": name, "added": section_added, "removed": section_removed})
+    return {"added": added, "removed": removed, "sections": sections}
+
+
+def _version_range(skill) -> tuple[int, int]:
+    """The two newest versions to compare, oldest first."""
+    available = _available_versions(skill)
+    if len(available) < 2:
+        raise ValueError(
+            f"No snapshot to compare for {skill.slug}. A first render writes none; "
+            "re-distill the thread to keep it."
+        )
+    return available[-2], available[-1]
+
+
+def _version_list(versions: list[int]) -> str:
+    """Versions as `v1, v2`, used in pruning messages."""
+    return ", ".join(f"v{int(version)}" for version in versions)
 
 
 # --------------------------------------------------------------------------- commands
@@ -443,6 +551,18 @@ def cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _diff_summary(skill) -> str:
+    """One line describing the latest merge. Empty when nothing was kept."""
+    versions = _available_versions(skill)
+    if len(versions) < 2:
+        return ""
+    counts = _diff_counts(_read_version_text(skill, versions[-2]), _read_version_text(skill, versions[-1]))
+    return (
+        f"last change  v{versions[-2]} → v{versions[-1]}  "
+        f"+{counts['added']} added · -{counts['removed']} removed"
+    )
+
+
 def cmd_show(args: argparse.Namespace) -> int:
     _, store = _open(args)
     skill = _resolve_skill(store, args.slug)
@@ -463,8 +583,90 @@ def cmd_show(args: argparse.Namespace) -> int:
         _print(f"confidence {skill.confidence:.2f}   version {skill.version}   status {skill.status}")
         _print(f"usage      suggested {skill.suggested} · accepted {skill.accepted} · worked {skill.worked} · failed {skill.failed}")
         _print(f"path       {skill.path}")
+        summary = _diff_summary(skill)
+        if summary:
+            _print(summary)
         _print("")
         _print(f"Read {dim(str(Path(skill.path) / 'SKILL.md'))} or use --raw to print it.")
+    return 0
+
+
+def _print_diff(lines: list[str]) -> None:
+    for line in lines:
+        if line.startswith("+++"):
+            _print(bold(line))
+        elif line.startswith("---"):
+            _print(dim(line))
+        elif line.startswith("@"):
+            _print(cyan(line))
+        elif line.startswith("+"):
+            _print(green(line))
+        elif line.startswith("-"):
+            _print(red(line))
+        else:
+            _print(line)
+
+
+def cmd_diff(args: argparse.Namespace) -> int:
+    _, store = _open(args)
+    skill = _resolve_skill(store, args.slug)
+    if skill is None:
+        raise ValueError(f"Unknown skill: {args.slug}")
+    from_version = args.from_version
+    to_version = args.to_version
+    if from_version is None or to_version is None:
+        newest_first, newest_last = _version_range(skill)
+        from_version = from_version if from_version is not None else newest_first
+        to_version = to_version if to_version is not None else newest_last
+    old_text = _read_version_text(skill, from_version)
+    new_text = _read_version_text(skill, to_version)
+    counts = _diff_counts(old_text, new_text)
+    pruned = prune_snapshots(Path(skill.path), args.keep)
+    store.record_event(
+        "diff",
+        skill_slug=skill.slug,
+        data={
+            "from": from_version,
+            "to": to_version,
+            "added": counts["added"],
+            "removed": counts["removed"],
+            "pruned": pruned,
+        },
+    )
+    payload = {
+        "slug": skill.slug,
+        "from": from_version,
+        "to": to_version,
+        "sections": counts["sections"],
+        "added": counts["added"],
+        "removed": counts["removed"],
+    }
+    if args.json:
+        _print(json.dumps(payload, ensure_ascii=False, indent=2))
+        if pruned:
+            _print_err(f"pruned {len(pruned)} snapshot(s): {_version_list(pruned)}")
+        return 0
+    _print(f"{bold(skill.slug)}  {dim(f'v{from_version} → v{to_version}')}")
+    _print("")
+    if args.stat:
+        rows = [[item["name"], str(item["added"]), str(item["removed"])] for item in payload["sections"]]
+        rows.append(["Total", str(payload["added"]), str(payload["removed"])])
+        _print(_table(["SECTION", "ADDED", "REMOVED"], rows))
+        _print("")
+    _print_diff(
+        list(
+            difflib.unified_diff(
+                old_text.splitlines(),
+                new_text.splitlines(),
+                fromfile=_version_label(skill, from_version),
+                tofile=_version_label(skill, to_version),
+                lineterm="",
+            )
+        )
+    )
+    if pruned:
+        _print("")
+        _print(dim(f"pruned {len(pruned)} snapshot(s): {_version_list(pruned)}"))
     return 0
 
 
@@ -1097,6 +1299,32 @@ def build_parser() -> argparse.ArgumentParser:
     show.add_argument("--raw", action="store_true", help="Print SKILL.md")
     show.add_argument("--json", action="store_true")
     show.set_defaults(func=cmd_show)
+
+    diff = sub.add_parser("diff", help="Compare two stored versions of a skill")
+    diff.add_argument("slug", help="Skill slug or unique prefix")
+    diff.add_argument(
+        "--from",
+        dest="from_version",
+        type=int,
+        default=None,
+        help="Older version to read (default: the previous stored snapshot)",
+    )
+    diff.add_argument(
+        "--to",
+        dest="to_version",
+        type=int,
+        default=None,
+        help="Newer version to read (default: the current bundle)",
+    )
+    diff.add_argument("--stat", action="store_true", help="Print per-section added and removed counts")
+    diff.add_argument("--json", action="store_true", help="Machine-readable output")
+    diff.add_argument(
+        "--keep",
+        type=int,
+        default=DEFAULT_SNAPSHOT_KEEP,
+        help=f"Prune to the newest N snapshots (default {DEFAULT_SNAPSHOT_KEEP})",
+    )
+    diff.set_defaults(func=cmd_diff)
 
     archive = sub.add_parser("archive", help="Archive a skill but keep its files")
     archive.add_argument("slug")
