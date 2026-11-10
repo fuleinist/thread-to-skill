@@ -95,6 +95,35 @@ TOP_CHANNELS = 10
 # Append a migration and bump SCHEMA_VERSION; never rewrite an old entry.
 MIGRATIONS: tuple[tuple[int, Migration], ...] = ()
 
+# Version snapshots live inside the skill bundle, so nothing extra is needed to
+# keep them out of the way. They are plain copies, not registry rows.
+SNAPSHOT_DIRNAME = ".versions"
+SNAPSHOT_FILES = ("SKILL.md", "metadata.json")
+DEFAULT_SNAPSHOT_KEEP = 10
+
+
+def versions_dir(skill_dir: Path) -> Path:
+    """The snapshot directory inside a skill bundle."""
+    return Path(skill_dir) / SNAPSHOT_DIRNAME
+
+
+def snapshot_dir(skill_dir: Path, version: int) -> Path:
+    """The stored copy of one version."""
+    return versions_dir(skill_dir) / f"v{int(version)}"
+
+
+def list_snapshots(skill_dir: Path) -> list[int]:
+    """Stored snapshot versions, oldest first. Names that are not `vN` are ignored."""
+    directory = versions_dir(skill_dir)
+    if not directory.is_dir():
+        return []
+    versions = []
+    for entry in directory.iterdir():
+        name = entry.name
+        if entry.is_dir() and name.startswith("v") and name[1:].isdigit():
+            versions.append(int(name[1:]))
+    return sorted(versions)
+
 
 def inspect_schema(path: Path, *, target: int | None = None) -> dict[str, Any]:
     """Read the on-disk schema version without changing the database."""
