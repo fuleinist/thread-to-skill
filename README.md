@@ -298,6 +298,7 @@ A PyPI release is planned. Until then, install from GitHub.
 | `t2s list` | List skills with category, confidence, status, and usage |
 | `t2s show <slug>` | Show a skill, or `--raw` for the full `SKILL.md` |
 | `t2s diff <slug>` | Compare two stored versions of a skill, with `--stat` or `--json` |
+| `t2s edit <slug>` | Amend a skill by hand, then re-index it |
 | `t2s search <query>` | Full-text search across local skills |
 | `t2s suggest <prompt>` | Rank skills for a prompt; used by hooks |
 | `t2s feedback <slug>` | Record `worked`, `failed`, `accepted`, or `suggested` |
@@ -310,6 +311,10 @@ A PyPI release is planned. Until then, install from GitHub.
 | `t2s doctor` | Check Python, workspace, SQLite, PATH, and provider keys |
 
 Full options: [docs/cli.md](docs/cli.md).
+
+`t2s edit` amends a skill by hand and re-indexes it. A manual prose edit is not
+durable. A later `t2s distill --on-duplicate merge` re-renders the skill from
+`metadata.json` and overwrites it.
 
 ---
 

@@ -7,7 +7,9 @@ import datetime as dt
 import difflib
 import json
 import os
+import shlex
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -31,13 +33,24 @@ from .locking import DEFAULT_WAIT_SECONDS, LockError, acquire, release
 from .models import Thread
 from .providers import ProviderError, get_provider
 from .redact import redact_thread
-from .render import prune_snapshots
+from .render import prune_snapshots, snapshot_bundle
 from .review import apply_fixes, reason_counts, review_payload, review_skills
 from .search import format_suggestions, suggest_skills
 from .store import DEFAULT_SNAPSHOT_KEEP, Store, StoreError, inspect_schema, list_snapshots, snapshot_dir
-from .taxonomy import all_category_keys, category_label
-from .util import atomic_write_json, ensure_dir, human_number, now_iso, safe_console_text, truncate, unique_slug
-from .validate import validate_config_skills, validate_skill_dir
+from .taxonomy import all_category_keys, category_label, normalize_category, normalize_tags
+from .util import (
+    atomic_write_json,
+    atomic_write_text,
+    clamp,
+    ensure_dir,
+    human_number,
+    now_iso,
+    read_json,
+    safe_console_text,
+    truncate,
+    unique_slug,
+)
+from .validate import parse_frontmatter, validate_config_skills, validate_skill_dir
 
 
 # --------------------------------------------------------------------------- output
@@ -313,6 +326,107 @@ def _version_range(skill) -> tuple[int, int]:
 def _version_list(versions: list[int]) -> str:
     """Versions as `v1, v2`, used in pruning messages."""
     return ", ".join(f"v{int(version)}" for version in versions)
+
+
+# ------------------------------------------------------------------ manual edits
+
+# Keys `t2s edit --field` may change. The value is the frontmatter mapping that
+# holds the key; an empty parent means the key sits at the top level.
+EDIT_FIELD_KEYS = {
+    "name": "",
+    "description": "",
+    "category": "metadata",
+    "tags": "metadata",
+    "triggers": "metadata",
+    "confidence": "metadata",
+}
+LIST_FIELD_KEYS = ("tags", "triggers")
+MAX_TRIGGERS = 12
+MAX_FIELD_PRINT = 60
+
+
+def _editor_command() -> str:
+    """The editor to open: T2S_EDITOR, then VISUAL, then EDITOR, then the platform default."""
+    for name in ("T2S_EDITOR", "VISUAL", "EDITOR"):
+        value = (os.environ.get(name) or "").strip()
+        if value:
+            return value
+    return "notepad" if os.name == "nt" else "vi"
+
+
+def _run_editor(command: str, path: Path) -> int:
+    argv = shlex.split(command, posix=os.name != "nt")
+    if not argv:
+        raise ValueError("No editor configured. Set T2S_EDITOR, VISUAL, or EDITOR.")
+    argv.append(str(path))
+    return subprocess.run(argv).returncode
+
+
+def _metadata_block(frontmatter: dict[str, Any]) -> dict[str, Any]:
+    block = frontmatter.get("metadata")
+    if not isinstance(block, dict):
+        block = {}
+        frontmatter["metadata"] = block
+    return block
+
+
+def _field_target(frontmatter: dict[str, Any], key: str) -> dict[str, Any]:
+    """The mapping that holds an editable key: the top level, or the metadata block."""
+    parent = EDIT_FIELD_KEYS[key]
+    return frontmatter if not parent else _metadata_block(frontmatter)
+
+
+def _field_value(frontmatter: dict[str, Any], key: str) -> Any:
+    """Read an editable key from wherever the format keeps it."""
+    block = frontmatter.get("metadata")
+    if isinstance(block, dict) and key in block:
+        return block[key]
+    return frontmatter.get(key, "")
+
+
+def _apply_edit_field(frontmatter: dict[str, Any], key: str, value: str) -> None:
+    target = _field_target(frontmatter, key)
+    if key in LIST_FIELD_KEYS:
+        items = _split(value)
+        if not items:
+            raise ValueError(f"--field {key} needs a value")
+        if key == "tags":
+            items = normalize_tags(items)
+        else:
+            items = items[:MAX_TRIGGERS]
+        target[key] = items
+    elif key == "confidence":
+        try:
+            target[key] = round(clamp(float(value)), 3)
+        except ValueError:
+            raise ValueError(f"--field confidence must be a number between 0 and 1, got {value}") from None
+    else:
+        text = value.strip()
+        if not text:
+            raise ValueError(f"--field {key} needs a value")
+        target[key] = normalize_category(text) if key == "category" else text
+
+
+def _edit_frontmatter_text(frontmatter: dict[str, Any]) -> str:
+    """Rebuild the frontmatter block from parsed values, keeping the key order."""
+    lines = ["---"]
+    for key, value in frontmatter.items():
+        if isinstance(value, dict):
+            lines.append(f"{key}:")
+            for sub_key, sub_value in value.items():
+                lines.append(f"  {sub_key}: {json.dumps(sub_value, ensure_ascii=False)}")
+        else:
+            lines.append(f"{key}: {json.dumps(value, ensure_ascii=False)}")
+    lines.append("---")
+    return "\n".join(lines) + "\n\n"
+
+
+def _document_title(body: str, fallback: str) -> str:
+    """The heading the body opens with, which is what `t2s show` prints."""
+    for line in body.splitlines():
+        if line.startswith("# "):
+            return line[2:].strip() or fallback
+    return fallback
 
 
 # --------------------------------------------------------------------------- commands
@@ -667,6 +781,145 @@ def cmd_diff(args: argparse.Namespace) -> int:
     if pruned:
         _print("")
         _print(dim(f"pruned {len(pruned)} snapshot(s): {_version_list(pruned)}"))
+    return 0
+
+
+def cmd_edit(args: argparse.Namespace) -> int:
+    _, store = _open(args)
+    skill = _resolve_skill(store, args.slug)
+    skill_dir = Path(skill.path)
+    skill_md = skill_dir / "SKILL.md"
+    if not skill_md.exists():
+        raise ValueError(f"Skill {skill.slug} has no SKILL.md at {skill_md}. Re-run `t2s distill`.")
+
+    original_bytes = skill_md.read_bytes()
+    original_text = original_bytes.decode("utf-8")
+    changed: dict[str, str] = {}
+    editor = ""
+
+    if args.field or args.tag:
+        frontmatter, body = parse_frontmatter(original_text)
+        for raw in args.field:
+            key, _, value = raw.partition("=")
+            if key not in EDIT_FIELD_KEYS:
+                supported = ", ".join(sorted(EDIT_FIELD_KEYS))
+                raise ValueError(f"Unsupported --field key: {key}. Supported: {supported}")
+            if not value.strip():
+                raise ValueError(f"--field needs KEY=VALUE, got {raw}")
+            before = _field_value(frontmatter, key)
+            _apply_edit_field(frontmatter, key, value)
+            after = _field_value(frontmatter, key)
+            if after != before:
+                changed[key] = ", ".join(after) if isinstance(after, list) else str(after)
+        if args.tag:
+            target = _field_target(frontmatter, "tags")
+            before = [str(item) for item in (target.get("tags") or [])]
+            merged = normalize_tags(before, args.tag)
+            if merged != before:
+                changed["tags"] = ", ".join(merged)
+            target["tags"] = merged
+        text = _edit_frontmatter_text(frontmatter) + body.rstrip("\n") + "\n"
+    else:
+        editor = _editor_command()
+        code = _run_editor(editor, skill_md)
+        if code != 0:
+            _print_err(f"editor exited with {code}; {skill.slug}/SKILL.md was left unchanged")
+            return 1
+        text = skill_md.read_text(encoding="utf-8")
+
+    if text == original_text:
+        _print(f"{skill.slug}: no changes")
+        return 0
+
+    previous_version = int(skill.version)
+    version = previous_version if args.no_version_bump else previous_version + 1
+    updated_at = now_iso()
+
+    # Keep the live bundle before it changes, so `t2s diff` still shows this version.
+    snapshot_root = snapshot_dir(skill_dir, previous_version)
+    made_snapshot = False
+    if version != previous_version and not snapshot_root.exists():
+        made_snapshot = snapshot_bundle(skill_dir, previous_version) is not None
+
+    atomic_write_text(skill_md, text)
+    issues = validate_skill_dir(skill_dir)
+    errors = [issue for issue in issues if issue.level == "error"]
+    if errors:
+        skill_md.write_bytes(original_bytes)
+        if made_snapshot:
+            shutil.rmtree(snapshot_root, ignore_errors=True)
+            try:
+                snapshot_root.parent.rmdir()
+            except OSError:
+                pass
+        for issue in errors:
+            _print(red(issue.line()))
+        return 1
+
+    frontmatter, body = parse_frontmatter(text)
+
+    block = _metadata_block(frontmatter)
+    block["version"] = version
+    block["updated_at"] = updated_at
+    if "category" in changed:
+        block["category_label"] = category_label(str(block.get("category") or "uncategorized"))
+    text = _edit_frontmatter_text(frontmatter) + body.rstrip("\n") + "\n"
+
+    skill.name = str(_field_value(frontmatter, "name") or skill.slug)
+    skill.title = _document_title(body, skill.title)
+    skill.description = str(_field_value(frontmatter, "description") or "")
+    skill.category = normalize_category(str(_field_value(frontmatter, "category") or skill.category))
+    skill.tags = normalize_tags([str(item) for item in (_field_value(frontmatter, "tags") or [])])
+    skill.triggers = [str(item) for item in (_field_value(frontmatter, "triggers") or [])][:MAX_TRIGGERS]
+    try:
+        skill.confidence = round(clamp(float(_field_value(frontmatter, "confidence"))), 3)
+    except (TypeError, ValueError):
+        pass  # keep the stored value when the frontmatter has no usable number
+    skill.version = version
+    skill.updated_at = updated_at
+    skill.body = text
+
+    if version != previous_version:
+        prune_snapshots(skill_dir)
+
+    metadata = read_json(skill_dir / "metadata.json", {})
+    if not isinstance(metadata, dict):
+        metadata = {}
+    data = metadata.get("data") if isinstance(metadata.get("data"), dict) else {}
+    data.update({
+        "title": skill.title,
+        "description": skill.description,
+        "category": skill.category,
+        "tags": skill.tags,
+        "triggers": skill.triggers,
+        "confidence": skill.confidence,
+    })
+    when_to_use = _field_value(frontmatter, "when_to_use")
+    if isinstance(when_to_use, list) and when_to_use:
+        data["when_to_use"] = [str(item) for item in when_to_use]
+    metadata.update({"slug": skill.slug, "version": version, "updated_at": updated_at, "data": data})
+
+    atomic_write_text(skill_md, text)
+    atomic_write_json(skill_dir / "metadata.json", metadata)
+    skill.metadata = metadata
+    # save_skill writes the row and refreshes the skills_fts entry in one step.
+    store.save_skill(skill)
+    store.record_event(
+        "edited",
+        skill_slug=skill.slug,
+        data={"version": version, "fields": sorted(changed), "editor": editor or "none"},
+    )
+
+    label = f"v{previous_version} → v{version}" if version != previous_version else f"v{version}"
+    _print(f"{green('edited')} {bold(skill.slug)} {label}")
+    if changed:
+        for key in sorted(changed):
+            _print(f"  {key:<12} {truncate(changed[key], 60)}")
+    elif editor:
+        _print(f"  {'editor':<12} {truncate(editor, 60)}")
+    for issue in issues:
+        if issue.level == "warning":
+            _print(f"  {yellow('warning')} {issue.message}")
     return 0
 
 
@@ -1325,6 +1578,19 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Prune to the newest N snapshots (default {DEFAULT_SNAPSHOT_KEEP})",
     )
     diff.set_defaults(func=cmd_diff)
+
+    edit = sub.add_parser("edit", help="Amend a skill by hand, then re-index it")
+    edit.add_argument("slug", help="Skill slug or unique prefix")
+    edit.add_argument(
+        "--field",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Set a frontmatter field without an editor (name, description, category, tags, triggers, confidence)",
+    )
+    edit.add_argument("--tag", action="append", default=[], metavar="VALUE", help="Add a tag without an editor")
+    edit.add_argument("--no-version-bump", action="store_true", help="Keep the current version, for typo fixes")
+    edit.set_defaults(func=cmd_edit)
 
     archive = sub.add_parser("archive", help="Archive a skill but keep its files")
     archive.add_argument("slug")
