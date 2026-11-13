@@ -153,17 +153,25 @@ def _steps(value: Any) -> list[dict[str, Any]]:
     return steps
 
 
-def _rules(value: Any) -> list[dict[str, str]]:
-    rules: list[dict[str, str]] = []
+def _rules(value: Any) -> list[dict[str, Any]]:
+    rules: list[dict[str, Any]] = []
     for item in _as_list(value):
         if isinstance(item, dict):
             condition = _text(item.get("if") or item.get("condition"))
             action = _text(item.get("then") or item.get("action"))
             because = _text(item.get("because") or item.get("reason"))
             if condition or action:
-                rules.append({"if": condition, "then": action, "because": because})
+                # Keep the per-rule confidence so an inferred decision stays
+                # distinguishable from one the team stated outright.
+                try:
+                    confidence = float(item.get("confidence", 1.0))
+                except (TypeError, ValueError):
+                    confidence = 1.0
+                rules.append(
+                    {"if": condition, "then": action, "because": because, "confidence": round(confidence, 2)}
+                )
         elif isinstance(item, str) and item.strip():
-            rules.append({"if": "", "then": item.strip(), "because": ""})
+            rules.append({"if": "", "then": item.strip(), "because": "", "confidence": 1.0})
     return rules
 
 

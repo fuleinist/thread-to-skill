@@ -71,6 +71,28 @@ WEAK_SLUG_WORDS = {
     "lets", "let", "we", "our", "need", "needs", "should", "could", "would",
 }
 
+# Signals for the implicit-decision pass. These feed inference only, never the
+# explicit cue path, so explicit output is unchanged.
+CUE_COMMIT = (
+    "go with", "let's use", "stick with", "works for me", "ship it", "do that",
+)
+CUE_PROPOSAL = ("let's", "we should", "we could")
+CUE_AFFIRMATIVE = ("ok", "okay", "sounds good", "+1", "agreed", "yes", "yep", "sure")
+NEGATED_BEFORE = re.compile(r"(?:don'?t|do not|never|avoid|stop|refuse|can'?t|shouldn'?t)\s+$")
+NOUN_IT_IS = re.compile(r"(?<![a-z0-9])([a-z][a-z0-9_-]*) it is(?![a-z0-9])")
+WEAK_IT_IS_NOUNS = {
+    "a", "i", "an", "that", "this", "these", "those", "which", "what", "when",
+    "where", "how", "why", "who", "it", "so", "then", "there",
+}
+VERSION_SHAPE = re.compile(r"(?<![\d.])v?\d+\.\d+(?:\.\d+)?(?![\d.])")
+FLAG_SHAPE = re.compile(r"(?<![-\w])--[a-z0-9_]{1,}")
+ENV_NAME_SHAPE = re.compile(r"\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b")
+BACKTICK_COMMAND = re.compile(r"`[^`]+`")
+AFFIRMATIVE_MAX_WORDS = 5
+TERSE_MAX_WORDS = 11
+INFERRED_MAX_WORDS = 20
+RULE_LIMIT = 5
+
 
 def _sentences(text: str) -> list[str]:
     parts: list[str] = []
@@ -150,6 +172,112 @@ def _is_pitfall(sentence: str) -> bool:
 
 def _is_decision(sentence: str) -> bool:
     return _has_cue(sentence, CUE_DECISION)
+
+
+def _flat_line(text: str) -> str:
+    return re.sub(r"\s+", " ", text or "").strip()
+
+
+def _rule_key(text: str) -> str:
+    """Normalized `then` text used to compare inferred rules with explicit ones."""
+    return re.sub(r"[^\w]+", " ", (text or "").lower()).strip()
+
+
+def _is_commitment(text: str) -> bool:
+    low = (text or "").lower()
+    for cue in CUE_COMMIT:
+        match = re.search(r"(?<![a-z0-9])" + re.escape(cue) + r"(?![a-z0-9])", low)
+        # "Don't do that" is a pitfall, not a commitment.
+        if match and not NEGATED_BEFORE.search(low[:match.start()]):
+            return True
+    noun = NOUN_IT_IS.search(low)
+    return bool(noun) and noun.group(1) not in WEAK_IT_IS_NOUNS
+
+
+def _is_affirmative(text: str) -> bool:
+    low = _flat_line(text).lower().strip(" .!?,")
+    if not low or len(low.split()) > AFFIRMATIVE_MAX_WORDS:
+        return False
+    return _has_cue(low, CUE_AFFIRMATIVE)
+
+
+def _is_resolution_shape(text: str) -> bool:
+    low = (text or "").lower()
+    return bool(
+        VERSION_SHAPE.search(low)
+        or FLAG_SHAPE.search(low)
+        or ENV_NAME_SHAPE.search(text or "")
+        or BACKTICK_COMMAND.search(text or "")
+    )
+
+
+def _is_proposal_shape(text: str) -> bool:
+    low = (text or "").lower()
+    return _is_commitment(low) or _has_cue(low, CUE_PROPOSAL) or _is_resolution_shape(text)
+
+
+def _matching_clause(text: str, predicate) -> str:
+    for chunk in SENTENCE_SPLIT.split(text or ""):
+        clause = re.sub(r"\s+", " ", chunk).strip(" -•\t")
+        if clause and predicate(clause):
+            return clause
+    return _flat_line(text)
+
+
+def _inferred_rules(threads: list[Thread], explicit_rules: list[dict]) -> list[dict]:
+    """Second, message-aware pass for decisions that were never stated outright.
+
+    Three signals, all deliberately narrow: a commitment phrase, a short
+    affirmative from a different participant right after someone else's
+    proposal, and a terse resolution that answers a question. Inference is
+    guesswork, so these rules carry lower confidence than explicit ones.
+    """
+    taken = {_rule_key(rule["then"]) for rule in explicit_rules}
+    rules: list[dict] = []
+    for thread in threads:
+        for index, message in enumerate(thread.messages):
+            text = _flat_line(message.text)
+            words = len(text.split())
+            if not text or words > INFERRED_MAX_WORDS:
+                continue
+            previous = thread.messages[max(0, index - 2):index]
+            then = ""
+            because = ""
+            if _is_commitment(text):
+                then = _clean_step(_matching_clause(text, _is_commitment))
+                because = "inferred from commitment phrase"
+            elif _is_affirmative(text):
+                proposal = next(
+                    (
+                        item
+                        for item in reversed(previous)
+                        if item.author != message.author and _is_proposal_shape(item.text)
+                    ),
+                    None,
+                )
+                if proposal:
+                    then = _clean_step(
+                        _matching_clause(_flat_line(proposal.text), _is_proposal_shape)
+                    )
+                    because = "inferred from agreement"
+            elif (
+                words <= TERSE_MAX_WORDS
+                and _is_resolution_shape(text)
+                and previous
+                and previous[-1].text.rstrip().endswith("?")
+            ):
+                then = _clean_step(_matching_clause(text, _is_resolution_shape))
+                because = "inferred from commitment phrase"
+            if not then:
+                continue
+            key = _rule_key(then)
+            if not key or key in taken:
+                continue
+            taken.add(key)
+            rules.append({"if": "", "then": then.rstrip(" ."), "because": because, "confidence": 0.5})
+            if len(rules) >= RULE_LIMIT:
+                break
+    return rules
 
 
 def _is_explanation(sentence: str) -> bool:
@@ -413,14 +541,14 @@ def offline_distill(threads: list[Thread]) -> dict:
         cleaned = _clean_step(sentence)
         match = re.search(r"(?:if|when)\s+(.+?)[,;]\s*(?:then\s+)?(.+)", sentence, flags=re.I)
         if match:
-            decision_rules.append({"if": match.group(1).strip(), "then": match.group(2).strip(), "because": ""})
+            decision_rules.append({"if": match.group(1).strip(), "then": match.group(2).strip(), "because": "", "confidence": 1.0})
         elif cleaned:
             cleaned = re.sub(r"^there (?:are|is)\s+", "", cleaned, flags=re.I)
-            decision_rules.append({"if": "", "then": cleaned.rstrip("."), "because": ""})
+            decision_rules.append({"if": "", "then": cleaned.rstrip("."), "because": "", "confidence": 1.0})
     for sentence in sentences:
         match = re.search(r"(?:use|prefer)\s+(.+?)\s+(?:when|if)\s+(.+)", sentence, flags=re.I)
         if match and not _is_explanation(sentence):
-            decision_rules.append({"if": match.group(2).strip(), "then": f"Use {match.group(1).strip()}", "because": ""})
+            decision_rules.append({"if": match.group(2).strip(), "then": f"Use {match.group(1).strip()}", "because": "", "confidence": 1.0})
     unique_rules = []
     seen_rules = set()
     for rule in decision_rules:
@@ -428,7 +556,11 @@ def offline_distill(threads: list[Thread]) -> dict:
         if key not in seen_rules and rule["then"]:
             seen_rules.add(key)
             unique_rules.append(rule)
-    decision_rules = unique_rules[:5]
+    # Explicit rules keep their own slots. Inferred rules are appended after
+    # them and never merged into an explicit rule; the combined list still caps
+    # at five.
+    explicit_rules = unique_rules[:RULE_LIMIT]
+    decision_rules = (explicit_rules + _inferred_rules(threads, explicit_rules))[:RULE_LIMIT]
 
     pitfalls_data = []
     seen_pitfalls = set()
