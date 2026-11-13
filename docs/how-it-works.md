@@ -105,6 +105,30 @@ It then:
 - suggests tags and triggers
 - extracts source message IDs and participants
 
+#### Implicit decisions
+
+Threads often settle a decision without the words above. A second, message-aware
+pass adds inferred decision rules from three signals:
+
+1. commitment phrasing: “go with”, “let’s use”, “stick with”, “works for me”,
+   “ship it”, “do that”, and the `<noun> it is` pattern;
+2. agreement: a short affirmative (`ok`, `sounds good`, `+1`, `agreed`, `yes`)
+   from a different participant, when another participant wrote a proposal-shaped
+   message within the previous two messages;
+3. a terse resolution: a reply under 12 words naming a version, a flag, an
+   environment variable, or a backticked command, right after a question.
+
+Explicit cues always win. Explicit rules carry `confidence: 1.0` and an empty
+`because`; inferred rules carry `confidence: 0.5` and name their signal in
+`because`. Inferred rules are appended after the explicit ones, never merged
+into an explicit rule, deduplicated against them by normalized action text, and
+the combined list still caps at five.
+
+The pass is deliberately narrow — short messages only, no same-author agreement,
+no inference from a lone affirmative. A wrong decision rule is worse than a
+missing one: on the sample threads in `tests/fixtures` it produces no inferred
+rules at all.
+
 Offline output is a **draft**. It is deterministic, testable, and useful, but it does not understand nuance the way a model can.
 
 ### LLM providers
