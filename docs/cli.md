@@ -257,6 +257,36 @@ ignore rule, and `t2s delete` moves them with the bundle to the trash.
 
 ---
 
+## `t2s edit`
+
+```bash
+t2s edit checkout-integration-tests-fail
+t2s edit checkout-integration-tests-fail --field "description=Retry checkout calls twice"
+t2s edit checkout-integration-tests-fail --tag payments --no-version-bump
+```
+
+Opens `$T2S_EDITOR`, then `$VISUAL`, then `$EDITOR`, then `notepad` on Windows or `vi`
+elsewhere. The command waits for the editor to exit. An editor that exits non-zero
+leaves `SKILL.md` unchanged.
+
+On save the command validates the file, re-parses the frontmatter, bumps the patch
+version, refreshes the search index, and rewrites `metadata.json`. A validation error
+restores the previous file byte for byte and exits `1`. The bump copies the old bundle
+to `.versions/vN/`, so `t2s diff` shows the change.
+
+`--field KEY=VALUE` edits without an editor and repeats. Supported keys are `name`,
+`description`, `category`, `tags`, `triggers`, and `confidence`.
+`--field tags=alpha,beta` replaces the tag list. `--tag VALUE` adds one tag and keeps
+the others. `--no-version-bump` keeps the current version for a typo fix.
+
+### Manual edits and merges
+
+A manual edit changes this bundle only. A later `t2s distill --on-duplicate merge`
+re-renders the skill from `metadata.json` and overwrites manual prose edits. Re-distill
+the source thread when the change must survive.
+
+---
+
 ## `t2s archive`
 
 ```bash
