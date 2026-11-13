@@ -15,6 +15,7 @@ from .providers import ManualProvider, Provider, ProviderError
 from .render import build_description, render_reference, write_skill_bundle
 from .search import find_duplicate
 from .store import Store
+from .synthesis import apply_synthesis, attribute_step, cluster_threads, synthesize
 from .taxonomy import category_label, normalize_category, normalize_tags
 from .util import clamp, extract_json_object, now_iso, slugify, truncate, unique_slug
 
@@ -90,33 +91,53 @@ SCHEMA_HINT = """Return this JSON shape:
 }"""
 
 
-def build_prompt(threads: list[Thread], *, max_chars: int = 60_000) -> str:
+SYNTHESIZE_HINT = """The conversations are grouped into CLUSTERS. Threads in one cluster describe the same capability.
+
+Synthesis rules:
+1. Merge the threads in a cluster into one procedure. Drop a step only when another thread in the same cluster states the same step with no extra detail.
+2. Give every procedure step a "source_threads" list of the thread IDs that support it.
+3. When two threads give opposite instructions about the same subject ("always retry" against "never retry"), keep both steps and add a "conflicts" entry. Never average a contradiction away.
+4. Set "newer_thread" only when the thread headers make the order clear. Otherwise leave it empty and record the doubt in open_questions.
+5. Keep a step that only one thread states. A single source is not a reason to drop it.
+
+Extra JSON fields:
+  "procedure": [{"step": "...", "details": "...", "source_threads": ["thread-id"], "evidence": ["message-id"]}],
+  "conflicts": [{"step": "...", "source_threads": ["thread-id"], "conflicts_with": "...", "conflicting_source_threads": ["thread-id"], "reason": "...", "newer_thread": ""}]"""
+
+
+def build_prompt(threads: list[Thread], *, max_chars: int = 60_000, synthesize: bool = False) -> str:
     from .taxonomy import describe_categories
 
+    groups: list[list[Thread]] = cluster_threads(threads) if synthesize else [threads]
     blocks: list[str] = []
     used = 0
-    for thread in threads:
-        header = (
-            f"THREAD {thread.id}\n"
-            f"source: {thread.source}\nchannel: {thread.channel}\n"
-            f"messages: {thread.message_count}\nparticipants: {thread.speaker_list()}\n"
-        )
-        body = thread.content_text()
-        remaining = max_chars - used - len(header)
-        if remaining <= 1000:
-            blocks.append(header + "\n[truncated: additional threads omitted]")
-            break
-        if len(body) > remaining:
-            head = body[: int(remaining * 0.55)]
-            tail = body[-int(remaining * 0.35):]
-            body = head + "\n\n[... middle of thread omitted for length ...]\n\n" + tail
-        blocks.append(header + "\n" + body)
-        used += len(header) + len(body)
+    for group_index, group in enumerate(groups, start=1):
+        for thread in group:
+            header = (
+                (f"CLUSTER {group_index}\n" if synthesize else "")
+                + f"THREAD {thread.id}\n"
+                f"source: {thread.source}\nchannel: {thread.channel}\n"
+                f"messages: {thread.message_count}\nparticipants: {thread.speaker_list()}\n"
+            )
+            body = thread.content_text()
+            remaining = max_chars - used - len(header)
+            if remaining <= 1000:
+                blocks.append(header + "\n[truncated: additional threads omitted]")
+                break
+            if len(body) > remaining:
+                head = body[: int(remaining * 0.55)]
+                tail = body[-int(remaining * 0.35):]
+                body = head + "\n\n[... middle of thread omitted for length ...]\n\n" + tail
+            blocks.append(header + "\n" + body)
+            used += len(header) + len(body)
+    intro = "Distill the following conversation(s) into one reusable agent skill.\n\n"
+    if synthesize:
+        intro += SYNTHESIZE_HINT + "\n\n"
     return (
-        "Distill the following conversation(s) into one reusable agent skill.\n\n"
-        f"CATEGORY TAXONOMY\n{describe_categories()}\n\n"
-        f"{SCHEMA_HINT}\n\n"
-        "CONVERSATIONS\n\n" + "\n\n---\n\n".join(blocks)
+        intro
+        + f"CATEGORY TAXONOMY\n{describe_categories()}\n\n"
+        + f"{SCHEMA_HINT}\n\n"
+        + "CONVERSATIONS\n\n" + "\n\n---\n\n".join(blocks)
     )
 
 
@@ -149,8 +170,50 @@ def _steps(value: Any) -> list[dict[str, Any]]:
             step = _text(item.get("step") or item.get("action") or item.get("title"))
             if step:
                 evidence = [str(entry) for entry in _as_list(item.get("evidence")) if str(entry).strip()]
-                steps.append({"step": step, "details": _text(item.get("details")), "evidence": evidence})
+                record: dict[str, Any] = {"step": step, "details": _text(item.get("details")), "evidence": evidence}
+                # Only synthesis sets this key. A default run must not gain it.
+                sources = [
+                    str(entry)
+                    for entry in _as_list(item.get("source_threads"))
+                    if str(entry).strip()
+                ]
+                if sources:
+                    record["source_threads"] = sources
+                steps.append(record)
     return steps
+
+
+def _conflicts(value: Any) -> list[dict[str, Any]]:
+    conflicts: list[dict[str, Any]] = []
+    for item in _as_list(value):
+        if not isinstance(item, dict):
+            continue
+        step = _text(item.get("step"))
+        other = _text(item.get("conflicts_with"))
+        if not step or not other:
+            continue
+        record: dict[str, Any] = {
+            "step": step,
+            "source_threads": [
+                str(entry) for entry in _as_list(item.get("source_threads")) if str(entry).strip()
+            ],
+            "conflicts_with": other,
+            "conflicting_source_threads": [
+                str(entry)
+                for entry in _as_list(item.get("conflicting_source_threads"))
+                if str(entry).strip()
+            ],
+            "reason": _text(item.get("reason")),
+            "newer_thread": _text(item.get("newer_thread")),
+        }
+        kind = _text(item.get("kind"))
+        if kind:
+            record["kind"] = kind
+        other_kind = _text(item.get("conflicting_kind"))
+        if other_kind:
+            record["conflicting_kind"] = other_kind
+        conflicts.append(record)
+    return conflicts
 
 
 def _rules(value: Any) -> list[dict[str, Any]]:
@@ -311,6 +374,13 @@ def normalize_data(
             "Run the smallest relevant test or check and compare it with the expected outcome.",
             "Record the outcome with `t2s feedback <slug> --outcome worked` or `failed`.",
         ]
+    # Both keys exist only when synthesis produced them, so a default run keeps
+    # the exact same data shape it had before.
+    conflicts = _conflicts(data.get("conflicts"))
+    if conflicts:
+        normalized["conflicts"] = conflicts
+    if isinstance(data.get("synthesis"), dict):
+        normalized["synthesis"] = dict(data["synthesis"])
     normalized["description"] = build_description(normalized)
     return normalized
 
@@ -319,6 +389,32 @@ def re_sub_use_when(value: str) -> str:
     import re
 
     return re.sub(r"^use\s+when\s+", "", value, flags=re.I).strip().rstrip(".")
+
+
+def _complete_synthesis(data: dict[str, Any], threads: list[Thread]) -> dict[str, Any]:
+    """Fill the gaps a model leaves in synthesis mode.
+
+    The model owns the wording. This deterministic pass guarantees two things
+    the issue treats as non-negotiable: every step carries a source thread, and
+    a contradiction is never dropped. A model-supplied conflict list wins, so
+    its reasoning stays intact.
+    """
+    result = dict(data)
+    steps = _steps(result.get("procedure"))
+    for step in steps:
+        if not step.get("source_threads"):
+            step["source_threads"] = attribute_step(step["step"], threads)
+    result["procedure"] = steps
+    _, detected, clusters = synthesize(threads)
+    conflicts = _conflicts(result.get("conflicts")) or detected
+    result["conflicts"] = conflicts
+    result["synthesis"] = {
+        "enabled": True,
+        "clusters": clusters,
+        "conflicts": len(conflicts),
+        "steps": len(steps),
+    }
+    return result
 
 
 def distill_threads(
@@ -330,6 +426,7 @@ def distill_threads(
     tags: list[str] | None = None,
     slug: str = "",
     filters: MessageFilters | None = None,
+    synthesize: bool = False,
 ) -> dict[str, Any]:
     if not threads:
         raise DistillError("No threads selected")
@@ -339,9 +436,11 @@ def distill_threads(
             threads, filter_record = apply_filters(threads, filters)
         except FilterError as exc:
             raise DistillError(str(exc)) from exc
-    prompt = build_prompt(threads)
+    prompt = build_prompt(threads, synthesize=synthesize)
     if provider.mode == "offline":
         data = offline_distill(threads)
+        if synthesize:
+            data = apply_synthesis(threads, data)
     elif isinstance(provider, ManualProvider):
         target = config.prompts_dir / f"distill-{threads[0].id}.md"
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -360,6 +459,8 @@ def distill_threads(
             debug_path.write_text(raw, encoding="utf-8")
             raise DistillError(f"Could not parse provider output as JSON ({exc}). Raw output saved to {debug_path}") from exc
         data.setdefault("extractor", provider.name)
+        if synthesize:
+            data = _complete_synthesis(data, threads)
     normalized = normalize_data(
         data, threads, category_override=category, tags_extra=tags or [], slug_override=slug
     )
@@ -399,11 +500,27 @@ def merge_data(existing: Skill, incoming: dict[str, Any], threads: list[Thread])
         merged[section] = current
     for section, key in (("procedure", "step"), ("pitfalls", "pitfall"), ("decision_rules", "then"), ("examples", "input")):
         current = list(merged.get(section) or [])
-        seen = {str(item.get(key, "")).lower() for item in current if isinstance(item, dict)}
+        by_key = {
+            str(item.get(key, "")).lower(): item
+            for item in current
+            if isinstance(item, dict)
+        }
         for item in incoming.get(section) or []:
-            if isinstance(item, dict) and str(item.get(key, "")).lower() not in seen:
+            if not isinstance(item, dict):
+                continue
+            item_key = str(item.get(key, "")).lower()
+            match = by_key.get(item_key)
+            if match is None:
                 current.append(item)
-                seen.add(str(item.get(key, "")).lower())
+                by_key[item_key] = item
+                continue
+            # A step that both sides state keeps both sources.
+            sources = list(match.get("source_threads") or [])
+            for source in item.get("source_threads") or []:
+                if source not in sources:
+                    sources.append(source)
+            if sources:
+                match["source_threads"] = sources
         merged[section] = current
     merged["confidence"] = round(max(float(merged.get("confidence") or 0), float(incoming.get("confidence") or 0)), 3)
     provenance = dict(merged.get("provenance") or {})

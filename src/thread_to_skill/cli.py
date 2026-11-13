@@ -577,6 +577,7 @@ def cmd_distill(args: argparse.Namespace) -> int:
                 max_messages=args.max_messages,
                 exclude_bots=args.exclude_bots,
             ),
+            synthesize=args.synthesize,
         )
     except ManualPromptReady as exc:
         _print(f"{yellow('manual')} Distillation prompt written to {exc.path}")
@@ -590,6 +591,8 @@ def cmd_distill(args: argparse.Namespace) -> int:
         _print(f"category: {data['category']}  confidence: {data['confidence']}")
         _print(f"tags: {', '.join(data['tags']) or '—'}")
         _print(f"steps: {len(data['procedure'])}  rules: {len(data['decision_rules'])}  pitfalls: {len(data['pitfalls'])}")
+        if args.synthesize:
+            _print(f"conflicts: {len(data.get('conflicts') or [])}")
         return 0
     try:
         skill = save_skill(config, store, data, threads, on_duplicate=args.on_duplicate)
@@ -1531,6 +1534,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     distill.add_argument("--exclude-bots", action="store_true", help="Drop messages from automation accounts")
     distill.add_argument("--on-duplicate", default="warn", choices=["warn", "skip", "merge", "new"])
+    distill.add_argument(
+        "--synthesize",
+        action="store_true",
+        help="Cluster related threads, merge them into one procedure, and report conflicts",
+    )
     distill.add_argument("--install", default="", help="Comma-separated harnesses, or 'all'")
     distill.add_argument("--scope", default="user", choices=["user", "project"])
     distill.add_argument("--project-root", default="")
