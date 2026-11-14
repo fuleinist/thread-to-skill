@@ -20,6 +20,10 @@ class Provider:
     name = "base"
     mode = "llm"
 
+    # Token counts the last request reported. None when the provider does not
+    # report usage, which is what the usage module treats as an estimate.
+    last_usage: dict | None = None
+
     def complete(self, system: str, prompt: str, *, max_tokens: int = 4096, timeout: int = 120) -> str:
         raise NotImplementedError
 
@@ -38,6 +42,30 @@ class ManualProvider(Provider):
 
     def complete(self, system: str, prompt: str, *, max_tokens: int = 4096, timeout: int = 120) -> str:
         raise ProviderError("The manual provider writes a prompt for an external agent.")
+
+
+def _token_count(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _usage_block(parsed: dict[str, Any], *, prompt_key: str, completion_key: str) -> dict[str, int] | None:
+    """Read a provider usage block into the shared prompt/completion shape.
+
+    Returns None when the provider reported nothing. A provider that reports no
+    usage keeps `last_usage` unset so the usage module can label its run as an
+    estimate instead of inventing counts.
+    """
+    usage = parsed.get("usage")
+    if not isinstance(usage, dict):
+        return None
+    prompt_tokens = _token_count(usage.get(prompt_key))
+    completion_tokens = _token_count(usage.get(completion_key))
+    if prompt_tokens is None and completion_tokens is None:
+        return None
+    return {"prompt_tokens": prompt_tokens or 0, "completion_tokens": completion_tokens or 0}
 
 
 def _post_json(url: str, payload: dict[str, Any], headers: dict[str, str], timeout: int) -> dict[str, Any]:
@@ -101,6 +129,11 @@ class OpenAICompatProvider(Provider):
                 {"Authorization": f"Bearer {self.api_key}"},
                 timeout,
             )
+        # The last response wins: a retry that succeeds overwrites the usage of
+        # the request that rejected response_format.
+        record = _usage_block(parsed, prompt_key="prompt_tokens", completion_key="completion_tokens")
+        if record is not None:
+            self.last_usage = record
         try:
             return str(parsed["choices"][0]["message"]["content"])
         except (KeyError, IndexError, TypeError) as exc:
@@ -133,6 +166,9 @@ class AnthropicProvider(Provider):
             },
             timeout,
         )
+        record = _usage_block(parsed, prompt_key="input_tokens", completion_key="output_tokens")
+        if record is not None:
+            self.last_usage = record
         blocks = parsed.get("content") or []
         text = "".join(str(block.get("text", "")) for block in blocks if isinstance(block, dict) and block.get("type") == "text")
         if not text:
@@ -163,6 +199,9 @@ class OllamaProvider(Provider):
             {},
             timeout,
         )
+        record = _usage_block(parsed, prompt_key="prompt_eval_count", completion_key="eval_count")
+        if record is not None:
+            self.last_usage = record
         message = parsed.get("message") or {}
         content = message.get("content") if isinstance(message, dict) else None
         if not content:

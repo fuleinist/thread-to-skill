@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ from .search import find_duplicate
 from .store import Store
 from .synthesis import apply_synthesis, attribute_step, cluster_threads, synthesize
 from .taxonomy import category_label, normalize_category, normalize_tags
+from . import usage
 from .util import clamp, extract_json_object, now_iso, slugify, truncate, unique_slug
 
 
@@ -427,10 +429,13 @@ def distill_threads(
     slug: str = "",
     filters: MessageFilters | None = None,
     synthesize: bool = False,
+    max_cost: float | None = None,
 ) -> dict[str, Any]:
     if not threads:
         raise DistillError("No threads selected")
     filter_record: dict[str, Any] = {"applied": False}
+    model_name = str(getattr(provider, "model", "") or provider.name)
+    usage_record: dict[str, Any] | None = None
     if filters is not None and filters.active:
         try:
             threads, filter_record = apply_filters(threads, filters)
@@ -447,10 +452,25 @@ def distill_threads(
         target.write_text(SYSTEM_PROMPT + "\n\n" + prompt + "\n", encoding="utf-8")
         raise ManualPromptReady(target)
     else:
+        planned_tokens = usage.estimate_tokens(SYSTEM_PROMPT + prompt)
+        if max_cost is not None:
+            planned = usage.estimate_cost(model_name, planned_tokens, 0)
+            if planned["status"] == "known" and planned["usd"] > max_cost:
+                raise DistillError(
+                    f"Estimated cost {planned['usd']:.4f} USD for about {planned_tokens} prompt tokens "
+                    f"on {model_name} is above the --max-cost budget of {max_cost:.4f} USD. Nothing was sent."
+                )
+            if planned["status"] == "unknown":
+                print(
+                    f"warning: no price is known for {model_name or provider.name}, "
+                    "so the cost is unknown and --max-cost cannot block this run",
+                    file=sys.stderr,
+                )
         try:
             raw = provider.complete(SYSTEM_PROMPT, prompt, max_tokens=4096)
         except ProviderError:
             raise
+        usage_record = usage.capture(provider, model_name, prompt)
         try:
             data = extract_json_object(raw)
         except ValueError as exc:
@@ -466,6 +486,11 @@ def distill_threads(
     )
     if filter_record.get("applied"):
         normalized["provenance"]["filters"] = filter_record
+    if usage_record is not None:
+        normalized["usage"] = usage_record
+        normalized["cost"] = usage.estimate_cost(
+            model_name, usage_record["prompt_tokens"], usage_record["completion_tokens"]
+        )
     return normalized
 
 
@@ -599,5 +624,14 @@ def save_skill(
     # Preserve unique source thread order.
     skill.source_threads = list(dict.fromkeys(skill.source_threads))
     store.save_skill(skill)
-    store.record_event("distilled", skill_slug=slug, data={"threads": skill.source_threads, "version": version})
+    store.record_event(
+        "distilled",
+        skill_slug=slug,
+        data={
+            "threads": skill.source_threads,
+            "version": version,
+            "usage": data.get("usage"),
+            "cost": data.get("cost"),
+        },
+    )
     return skill

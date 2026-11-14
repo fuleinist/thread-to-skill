@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from . import __version__
+from . import __version__, usage
 from .adapters import load_path
 from .config import Config, ConfigError, find_home
 from .distill import DistillError, DuplicateSkill, ManualPromptReady, distill_threads, save_skill
@@ -578,6 +578,7 @@ def cmd_distill(args: argparse.Namespace) -> int:
                 exclude_bots=args.exclude_bots,
             ),
             synthesize=args.synthesize,
+            max_cost=args.max_cost,
         )
     except ManualPromptReady as exc:
         _print(f"{yellow('manual')} Distillation prompt written to {exc.path}")
@@ -1312,6 +1313,69 @@ def cmd_stats(args: argparse.Namespace) -> int:
                     ],
                 )
             )
+    if args.cost:
+        _print("")
+        _print(bold("Cost"))
+        events = [event for event in store.list_events(limit=2000) if event["kind"] == "distilled"]
+        models: dict[str, dict[str, float]] = {}
+        unknown_runs = 0
+        unrecorded = 0
+        priced_runs = 0
+        total_usd = 0.0
+        for event in events:
+            payload = event.get("data") or {}
+            if isinstance(payload, str):
+                try:
+                    payload = json.loads(payload)
+                except ValueError:
+                    payload = {}
+            if not isinstance(payload, dict):
+                payload = {}
+            record = payload.get("usage") or {}
+            if not isinstance(record, dict) or not record:
+                unrecorded += 1
+                continue
+            cost = payload.get("cost") or {}
+            if not isinstance(cost, dict):
+                cost = {}
+            model = str(cost.get("model") or record.get("model") or "unknown")
+            bucket = models.setdefault(
+                model, {"runs": 0.0, "prompt": 0.0, "completion": 0.0, "usd": 0.0, "estimated": 0.0}
+            )
+            bucket["runs"] += 1
+            bucket["prompt"] += float(record.get("prompt_tokens") or 0)
+            bucket["completion"] += float(record.get("completion_tokens") or 0)
+            if record.get("estimated"):
+                bucket["estimated"] += 1
+            if cost.get("status") == "known" and cost.get("usd") is not None:
+                bucket["usd"] += float(cost["usd"])
+                total_usd += float(cost["usd"])
+                priced_runs += 1
+            else:
+                unknown_runs += 1
+        if not models:
+            _print("No recorded distillation usage yet.")
+        else:
+            rows = [
+                [
+                    model,
+                    str(int(values["runs"])),
+                    str(int(values["prompt"])),
+                    str(int(values["completion"])),
+                    f"{values['usd']:.4f}" if values["usd"] else "unknown",
+                ]
+                for model, values in sorted(models.items())
+            ]
+            _print(_table(["MODEL", "RUNS", "PROMPT", "OUTPUT", "USD"], rows))
+            _print(f"  total {total_usd:.4f} USD across {priced_runs} priced run(s)")
+            if unknown_runs:
+                _print(f"  {unknown_runs} run(s) used a model with no known price")
+            if unrecorded:
+                _print(f"  {unrecorded} distillation(s) recorded no usage")
+            estimated = sum(int(values["estimated"]) for values in models.values())
+            if estimated:
+                _print(f"  {estimated} run(s) reported estimated token counts, not provider counts")
+        _print(f"  price table last updated {usage.PRICE_TABLE_LAST_UPDATED}")
     recent = store.list_events(limit=8)
     if recent:
         _print("")
@@ -1545,6 +1609,12 @@ def build_parser() -> argparse.ArgumentParser:
     distill.add_argument("--force", action="store_true")
     distill.add_argument("--dry-run", action="store_true")
     distill.add_argument("--json", action="store_true")
+    distill.add_argument(
+        "--max-cost",
+        type=float,
+        default=None,
+        help="Stop before the request when the prompt estimate is above this many USD",
+    )
     distill.set_defaults(func=cmd_distill)
 
     listing = sub.add_parser("list", help="List skills")
@@ -1677,6 +1747,9 @@ def build_parser() -> argparse.ArgumentParser:
     stats.add_argument("--by-source", action="store_true", help="Show a table of threads and skills per source")
     stats.add_argument("--by-channel", action="store_true", help="Show the top channels with skills")
     stats.add_argument("--timeline", action="store_true", help="Show activity for the last 12 ISO weeks")
+    stats.add_argument(
+        "--cost", action="store_true", help="Show recorded token usage and the estimated cost per model"
+    )
     stats.set_defaults(func=cmd_stats)
 
     review = sub.add_parser("review", help="Find stale, failing, unused, duplicate, and conflicting skills")

@@ -124,6 +124,7 @@ t2s distill f14de44f6ca5 9b2c11aa44de --synthesize
 | `--api-key-env` | provider default | Read the key from this environment variable |
 | `--command` | — | Command provider; receives the prompt on stdin |
 | `--timeout` | `120` | Provider timeout in seconds |
+| `--max-cost` | — | Stop before the request when the prompt estimate is above this many USD |
 | `--category` | inferred | Force a taxonomy category |
 | `--tags` | — | Comma-separated extra tags |
 | `--slug` | generated | Explicit slug |
@@ -167,6 +168,16 @@ Synthesis notes:
 - A conflict names the newer thread only when the threads carry timestamps. Otherwise the section says the tool cannot tell, and keeps both steps.
 - `metadata.json` records the step sources under `data.procedure[].source_threads`, the conflicts under `data.conflicts`, and the cluster summary under `data.synthesis`.
 - Without the flag, the output is unchanged.
+
+Usage and cost notes:
+
+- A distillation records `prompt_tokens`, `completion_tokens`, `model`, and `provider` under `data.usage` in `metadata.json`. The same record goes with the `distilled` event.
+- When the provider reports usage, the record says `estimated: false` and the counts are the provider's. When it reports nothing, the prompt size is estimated at about four characters per token and the record says `estimated: true`. A completion count is never invented: an unreported one stays `0`.
+- `data.cost` holds the estimate for that run: `usd`, `status` (`known` or `unknown`), `model`, and `priced_as`.
+- `--max-cost` checks the prompt estimate before the request is sent. When the model has a known price and the estimate is above the budget, the run stops with an error and nothing is sent. The error states the estimate, the budget, and the model.
+- An unknown model stops nothing. The run prints a warning, because a price the table does not hold cannot be compared to a budget. `stats --cost` counts those runs as unknown. An unknown price is never reported as free.
+- The price table lives in `src/thread_to_skill/usage.py`. Its `PRICE_TABLE_LAST_UPDATED` constant records the revision date. Prices are reference rates, not provider quotes. Update the date with every revision.
+- A dated model id matches its base entry, so `gpt-4o-mini-2024-07-18` is priced as `gpt-4o-mini`.
 
 ---
 
@@ -483,6 +494,7 @@ t2s stats --json
 t2s stats --by-source
 t2s stats --by-channel
 t2s stats --timeline
+t2s stats --cost
 t2s stats --by-source --by-channel --timeline
 ```
 
@@ -491,6 +503,7 @@ t2s stats --by-source --by-channel --timeline
 | `--by-source` | off | Add a "By source" table |
 | `--by-channel` | off | Add a "Top channels" table |
 | `--timeline` | off | Add a "Timeline" table for the last 12 ISO weeks |
+| `--cost` | off | Add a "Cost" table of recorded token usage per model |
 | `--json` | off | Machine-readable output |
 
 Shows thread/skill counts, status distribution, category distribution, and recent events.
@@ -506,6 +519,11 @@ The three flags combine. Sections print in order after "By category" and before
 - `Timeline` reports ingests (threads ingested in the week) and distills (skills
   created in the week) per ISO week, oldest first, ending with the current week.
   Week boundaries use local time.
+- `Cost` reads the `distilled` events that carry a usage record. It prints one row
+  per model with the run count, the prompt and output token totals, and the USD
+  estimate. A model with no known price shows `unknown`, never a zero. Below the
+  table it prints the USD total, the count of unpriced runs, and the count of runs
+  whose token counts were estimated. The last line states the price table date.
 
 A section with no rows prints one short line instead of a table. On an empty
 workspace the human output prints a single hint line and no tables.
