@@ -609,6 +609,102 @@ on the `counts` object or on the length of `findings`.
 
 ---
 
+## `t2s export`
+
+```bash
+t2s export --out skills.tar.gz
+t2s export --out skills.tar.gz --slug release-checklist
+t2s export --out skills.tar.gz --category engineering/release --include-references
+t2s export --out skills.tar.gz --json
+```
+
+Writes one portable bundle. A bundle is a gzipped tar with a manifest and one
+directory per skill:
+
+```text
+manifest.json
+skills/<slug>/SKILL.md
+skills/<slug>/metadata.json
+skills/<slug>/references/thread.md    (only with --include-references)
+```
+
+`--slug` and `--category` select what ships. Both repeat. Without them, every skill
+ships, including archived skills.
+
+`references/` holds raw conversation transcripts. A bundle leaves that directory out
+unless you pass `--include-references`. `.versions/` holds local snapshots and never
+ships.
+
+Two exports of an unchanged library are byte-identical. The writer sorts every member
+and fixes every member time and mode. The manifest carries no timestamp, because a
+timestamp would break that promise. This makes a bundle safe to diff, cache, and
+publish.
+
+### Manifest format
+
+`manifest.json` is UTF-8 JSON with sorted keys:
+
+```json
+{
+  "schema": "t2s-bundle-v1",
+  "tool": "thread-to-skill",
+  "tool_version": "0.1.0",
+  "skills": [
+    {"slug": "release-checklist", "name": "release-checklist", "version": 1,
+     "category": "engineering/release", "status": "active", "confidence": 0.6,
+     "updated_at": "2026-11-01T00:00:00Z"}
+  ],
+  "files": [
+    {"path": "skills/release-checklist/SKILL.md", "sha256": "<hex>", "size": 1234}
+  ]
+}
+```
+
+- `schema` names the format. An importer refuses an unknown value.
+- `tool_version` records the writer, so a reader can explain a format change.
+- `skills` lists one row per skill, in slug order.
+- `files` lists every shipped file except the manifest itself, in path order. Each row
+  carries a SHA-256 digest and a byte size.
+
+The manifest does not list itself, because a file cannot hash its own content.
+
+`--json` prints the manifest that was written. The command fails when no skill matches
+the filters. It never writes an empty bundle.
+
+---
+
+## `t2s import-bundle`
+
+```bash
+t2s import-bundle skills.tar.gz
+t2s import-bundle skills.tar.gz --force
+t2s import-bundle skills.tar.gz --json
+```
+
+Verifies a bundle, installs every skill, and indexes it. `t2s list` and `t2s suggest`
+see the imported skills at once.
+
+The command checks each item before it writes anything:
+
+- the manifest exists, parses, and names a known `schema`
+- every listed file is present, and its digest and size match
+- the bundle holds no file that the manifest does not list
+- every path is relative and stays inside the bundle root
+- every member is a regular file, so no link or device node can ship
+- every skill passes `t2s validate` at error level
+
+One failed check stops the whole import. The workspace keeps its previous state. The
+command prints the file that failed and the reason.
+
+An existing slug stops the import. Pass `--force` to replace it. `--force` removes the
+old directory, so the new copy cannot merge with the old one.
+
+An imported skill has no source threads. `references/thread.md` may be absent, and the
+validator reports that as a warning, not an error. A skill that shipped as `archived`
+stays archived after import.
+
+---
+
 ## `t2s doctor`
 
 ```bash
