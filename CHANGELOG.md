@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Release automation for PyPI. A `v*` tag builds the sdist and the wheel, checks the tag against `pyproject.toml`, installs the wheel in a clean virtual environment, and publishes through PyPI Trusted Publishing. A manual run publishes to TestPyPI first. The workflow stops before any upload when the tag and the project version differ, and it attaches both files to the GitHub release. `docs/releasing.md` documents the one-time publisher setup and the dry run.
+
 - `t2s distill --synthesize` groups related threads, merges them into one procedure, and reports contradictions. Threads are clustered by shared vocabulary, so two conversations about the same work produce one skill. A step that several threads state appears once, and `SKILL.md` lists its source thread IDs on a `Sources:` line. When two threads give opposite instructions about the same subject, both steps stay and a `## Conflicts` section names both sources. The section names the newer thread only when the threads carry timestamps. `metadata.json` records the cluster summary under `data.synthesis` and the contradictions under `data.conflicts`. Without the flag, the output is unchanged.
 
 - `t2s distill` filters the input before prompt construction and token budgeting: `--since`, `--until`, `--participants`, `--max-messages`, and `--exclude-bots`. The window, the participant filter, and the kept message counts are stored under `data.provenance.filters` and printed in the `## Source` section. A filter that removes every message stops the run with a clear error instead of writing an empty skill.

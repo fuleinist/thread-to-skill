@@ -49,6 +49,7 @@ thread-to-skill = "thread_to_skill.cli:main"
 Homepage = "https://github.com/fuleinist/thread-to-skill"
 Repository = "https://github.com/fuleinist/thread-to-skill"
 Issues = "https://github.com/fuleinist/thread-to-skill/issues"
+Changelog = "https://github.com/fuleinist/thread-to-skill/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["src"]
