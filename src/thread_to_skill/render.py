@@ -37,6 +37,10 @@ def _clean_inline(text: str) -> str:
     return " ".join(str(text or "").split())
 
 
+def _kind_label(value: Any) -> str:
+    return "pitfall" if str(value or "").strip() == "pitfall" else "procedure step"
+
+
 def _render_frontmatter(slug: str, data: dict[str, Any], *, version: int, created_at: str, updated_at: str) -> str:
     description = str(data.get("description") or build_description(data))
     lines = [
@@ -95,12 +99,52 @@ def render_skill_md(slug: str, data: dict[str, Any], *, version: int, created_at
         text = _clean_inline(str(step.get("step") or ""))
         details = str(step.get("details") or "").strip()
         evidence = [str(item) for item in step.get("evidence") or [] if str(item).strip()]
+        sources = [str(item) for item in step.get("source_threads") or [] if str(item).strip()]
         lines.append(f"{index}. **{text}**")
         if details:
             for detail_line in details.splitlines():
                 lines.append(f"   {detail_line}")
         if evidence:
             lines.append(f"   *Evidence: {', '.join(evidence)}*")
+        if sources:
+            lines.append(f"   *Sources: {', '.join(sources)}*")
+        lines.append("")
+
+    conflicts = data.get("conflicts") or []
+    if conflicts:
+        lines.append("## Conflicts")
+        lines.append("")
+        lines.append(
+            "The source threads disagree on these steps. Both stay in the skill. "
+            "Confirm which one applies before you follow either."
+        )
+        lines.append("")
+        for item in conflicts:
+            if not isinstance(item, dict):
+                continue
+            step = _clean_inline(str(item.get("step") or ""))
+            other = _clean_inline(str(item.get("conflicts_with") or ""))
+            if not step or not other:
+                continue
+            sources = [str(entry) for entry in item.get("source_threads") or [] if str(entry).strip()]
+            other_sources = [
+                str(entry) for entry in item.get("conflicting_source_threads") or [] if str(entry).strip()
+            ]
+            lines.append(
+                f"- **{step}** ({_kind_label(item.get('kind'))}, "
+                f"{', '.join(sources) or 'source unknown'}) conflicts with "
+                f"**{other}** ({_kind_label(item.get('conflicting_kind'))}, "
+                f"{', '.join(other_sources) or 'source unknown'})."
+            )
+            newer = str(item.get("newer_thread") or "").strip()
+            if newer:
+                lines.append(
+                    f"  `{newer}` is the newer thread. Keep both steps until someone confirms the current rule."
+                )
+            else:
+                lines.append(
+                    "  The tool cannot tell which thread is newer. Keep both steps until someone confirms the current rule."
+                )
         lines.append("")
 
     rules = data.get("decision_rules") or []
@@ -183,6 +227,14 @@ def render_skill_md(slug: str, data: dict[str, Any], *, version: int, created_at
                 f"- `{source.get('thread_id', 'unknown')}` — {source.get('source', 'unknown')} / "
                 f"{source.get('channel', 'unknown')} ({source.get('messages', '?')} messages)"
             )
+    synthesis = data.get("synthesis") or {}
+    if synthesis.get("enabled"):
+        clusters = synthesis.get("clusters") or []
+        lines.append("")
+        lines.append(
+            f"Synthesized from {len(clusters)} cluster(s) of related threads. "
+            f"{int(synthesis.get('conflicts') or 0)} conflict(s) reported."
+        )
     filters = provenance.get("filters") or {}
     if filters.get("applied"):
         parts = []

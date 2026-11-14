@@ -112,6 +112,7 @@ t2s distill latest --install claude,agents
 t2s distill latest --dry-run --json
 t2s distill latest --since 2026-10-01 --until 2026-10-07
 t2s distill latest --participants alice,bob --exclude-bots
+t2s distill f14de44f6ca5 9b2c11aa44de --synthesize
 ```
 
 | Option | Default | Meaning |
@@ -132,6 +133,7 @@ t2s distill latest --participants alice,bob --exclude-bots
 | `--max-messages` | `0` | Keep the most recent N messages across the selected threads |
 | `--exclude-bots` | off | Drop messages from automation accounts |
 | `--on-duplicate` | `warn` | `warn`, `skip`, `merge`, `new` |
+| `--synthesize` | off | Cluster related threads, merge them into one procedure, and report conflicts |
 | `--install` | — | Comma-separated harnesses or `all` |
 | `--scope` | `user` | `user` or `project` |
 | `--project-root` | cwd | Project root for `project` scope |
@@ -155,6 +157,16 @@ Filter notes:
 - A filter that removes every message stops the run with an error. It never writes an empty skill.
 - `metadata.json` records the window, the participants, and the message counts under `data.provenance.filters`. `SKILL.md` states the same slice in `## Source`.
 - A skill distilled from a three-day window does not claim to cover the whole channel.
+
+Synthesis notes:
+
+- Use `--synthesize` when two or more threads cover the same work. A plain run concatenates them and reads like one long conversation.
+- Threads are grouped by shared vocabulary. Each group becomes one procedure.
+- A step that several threads state appears once. Its `Sources:` line lists every thread that supports it.
+- An opposite instruction is kept as a conflict, never averaged away. `SKILL.md` gets a `## Conflicts` section with both steps and both thread IDs.
+- A conflict names the newer thread only when the threads carry timestamps. Otherwise the section says the tool cannot tell, and keeps both steps.
+- `metadata.json` records the step sources under `data.procedure[].source_threads`, the conflicts under `data.conflicts`, and the cluster summary under `data.synthesis`.
+- Without the flag, the output is unchanged.
 
 ---
 
