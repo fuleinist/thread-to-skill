@@ -57,6 +57,39 @@ class ReadProjectVersionTests(unittest.TestCase):
                 release.read_project_version(path)
 
 
+class FallbackParserTests(unittest.TestCase):
+    """The Python 3.10 path, tested on every interpreter."""
+
+    def test_reads_the_project_table(self) -> None:
+        text = '[project]\nname = "x"\nversion = "2.3.4"\n'
+        self.assertEqual(release._parse_version_fallback(text), "2.3.4")
+
+    def test_ignores_versions_in_other_tables(self) -> None:
+        text = '[tool.other]\nversion = "9.9.9"\n'
+        with self.assertRaises(ValueError):
+            release._parse_version_fallback(text)
+
+    def test_ignores_nested_project_tables(self) -> None:
+        text = (
+            "[project]\n"
+            'name = "x"\n'
+            "\n"
+            "[project.optional-dependencies]\n"
+            'version = "8.8.8"\n'
+        )
+        with self.assertRaises(ValueError):
+            release._parse_version_fallback(text)
+
+    def test_rejects_an_empty_version(self) -> None:
+        text = '[project]\nversion = ""\n'
+        with self.assertRaises(ValueError):
+            release._parse_version_fallback(text)
+
+    def test_keeps_a_prerelease_suffix(self) -> None:
+        text = '[project]\nversion = "1.0.0-rc1"\n'
+        self.assertEqual(release._parse_version_fallback(text), "1.0.0-rc1")
+
+
 class CheckTests(unittest.TestCase):
     def test_match_returns_empty_string(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

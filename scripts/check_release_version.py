@@ -18,7 +18,28 @@ try:  # Python 3.11 and newer
 except ModuleNotFoundError:  # pragma: no cover - Python 3.10 fallback
     tomllib = None  # type: ignore[assignment]
 
-VERSION_LINE = re.compile(r'^\s*version\s*=\s*"([^"]+)"\s*$', re.MULTILINE)
+VERSION_LINE = re.compile(r'^\s*version\s*=\s*"([^"]+)"\s*$')
+TABLE_HEADER = re.compile(r"^\s*\[([^\]]+)\]\s*$")
+
+
+def _parse_version_fallback(text: str) -> str:
+    """Read the version from the [project] table without tomllib.
+
+    Only a bare ``[project]`` header opens the table. A nested table such as
+    ``[project.optional-dependencies]`` is a different table and is skipped.
+    """
+    section = ""
+    for line in text.splitlines():
+        header = TABLE_HEADER.match(line)
+        if header is not None:
+            section = header.group(1).strip()
+            continue
+        if section != "project":
+            continue
+        match = VERSION_LINE.match(line)
+        if match is not None:
+            return match.group(1)
+    raise ValueError("no [project] version")
 
 
 def read_project_version(pyproject: Path) -> str:
@@ -32,10 +53,10 @@ def read_project_version(pyproject: Path) -> str:
         raise ValueError(f"no [project] version in {pyproject}")
 
     text = pyproject.read_text(encoding="utf-8")
-    match = VERSION_LINE.search(text)
-    if match is None:
-        raise ValueError(f"no [project] version in {pyproject}")
-    return match.group(1)
+    try:
+        return _parse_version_fallback(text)
+    except ValueError as error:
+        raise ValueError(f"no [project] version in {pyproject}") from error
 
 
 def normalize_tag(tag: str) -> str:
