@@ -16,6 +16,7 @@ from typing import Any
 
 from . import __version__, usage
 from .adapters import load_path
+from .bundle import BundleError, export_skills, import_bundle
 from .config import Config, ConfigError, find_home
 from .distill import DistillError, DuplicateSkill, ManualPromptReady, distill_threads, save_skill
 from .feedback import apply_feedback, feedback_summary
@@ -1467,6 +1468,42 @@ def cmd_review(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export(args: argparse.Namespace) -> int:
+    _, store = _open(args)
+    out = Path(args.out).expanduser()
+    manifest = export_skills(
+        store,
+        out=out,
+        slugs=args.slug or [],
+        categories=args.category or [],
+        include_references=args.include_references,
+        tool_version=__version__,
+    )
+    if args.json:
+        _print(json.dumps(manifest, ensure_ascii=False, indent=2))
+        return 0
+    files = len(manifest["files"])
+    _print(f"{green('exported')} {bold(str(out))}")
+    _print(f"  {len(manifest['skills'])} skill(s) A {files} file(s)")
+    if not args.include_references:
+        _print(dim("  references/ was left out; add --include-references to ship transcripts"))
+    return 0
+
+
+def cmd_import_bundle(args: argparse.Namespace) -> int:
+    config, store = _open(args)
+    result = import_bundle(config, store, Path(args.bundle).expanduser(), force=args.force)
+    if args.json:
+        _print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    imported = result["imported"]
+    _print(f"{green('imported')} {len(imported)} skill(s) from {bold(args.bundle)}")
+    for slug in imported:
+        _print(f"  {slug}")
+    _print(dim("Run `t2s validate --all` to check the imported skills."))
+    return 0
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     home = _home_path(args)
     checks: list[tuple[str, bool, str]] = []
@@ -1762,6 +1799,24 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--json", action="store_true")
     review.set_defaults(func=cmd_review)
 
+    export = sub.add_parser("export", help="Export skills as a portable, checksummed bundle")
+    export.add_argument("--out", required=True, help="Output path for the .tar.gz bundle")
+    export.add_argument("--slug", action="append", default=[], help="Export only this skill (repeatable)")
+    export.add_argument("--category", action="append", default=[], help="Export only this category (repeatable)")
+    export.add_argument(
+        "--include-references",
+        action="store_true",
+        help="Include references/ transcripts, which hold raw conversation text",
+    )
+    export.add_argument("--json", action="store_true", help="Print the manifest that was written")
+    export.set_defaults(func=cmd_export)
+
+    import_bundle_cmd = sub.add_parser("import-bundle", help="Verify and install skills from a bundle")
+    import_bundle_cmd.add_argument("bundle", help="Path to a bundle written by `t2s export`")
+    import_bundle_cmd.add_argument("--force", action="store_true", help="Replace skills that are already installed")
+    import_bundle_cmd.add_argument("--json", action="store_true")
+    import_bundle_cmd.set_defaults(func=cmd_import_bundle)
+
     doctor = sub.add_parser("doctor", help="Check the local environment")
     doctor.add_argument("--json", action="store_true")
     doctor.add_argument("--migrate", action="store_true", help="Apply pending database migrations")
@@ -1794,7 +1849,7 @@ def main(argv: list[str] | None = None) -> int:
     except LockError as exc:
         _print(red(f"error: {exc}"))
         return 1
-    except (ConfigError, DistillError, DuplicateSkill, ProviderError, StoreError, FileNotFoundError, ValueError, KeyError) as exc:
+    except (BundleError, ConfigError, DistillError, DuplicateSkill, ProviderError, StoreError, FileNotFoundError, ValueError, KeyError) as exc:
         _print(red(f"error: {exc}"))
         return 1
     except KeyboardInterrupt:
