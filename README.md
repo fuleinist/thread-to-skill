@@ -266,15 +266,21 @@ Redaction is a safety net, not a guarantee. Review a generated skill before shar
 Requirements: Python 3.10+. No runtime dependencies.
 
 ```bash
-git clone https://github.com/fuleinist/thread-to-skill.git
-cd thread-to-skill
-python -m pip install -e .
+python -m pip install thread-to-skill
 ```
 
-Or install the CLI directly from the repository:
+Until the first PyPI release lands, install from the repository:
 
 ```bash
 python -m pip install "git+https://github.com/fuleinist/thread-to-skill.git"
+```
+
+For development, clone the repository and install it in editable mode:
+
+```bash
+git clone https://github.com/fuleinist/thread-to-skill.git
+cd thread-to-skill
+python -m pip install -e .
 ```
 
 Verify:
@@ -283,8 +289,6 @@ Verify:
 t2s --version
 t2s doctor
 ```
-
-A PyPI release is planned. Until then, install from GitHub.
 
 ---
 
