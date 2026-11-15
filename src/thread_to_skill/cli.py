@@ -21,6 +21,7 @@ from .config import Config, ConfigError, find_home
 from .distill import DistillError, DuplicateSkill, ManualPromptReady, distill_threads, save_skill
 from .feedback import apply_feedback, feedback_summary
 from .filters import MessageFilters
+from .importer import SkillImportError, import_skills
 from .hooks import (
     ALL_HOOK_HARNESSES,
     BROKEN_DOCTOR_STATUSES,
@@ -1504,6 +1505,56 @@ def cmd_import_bundle(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_import(args: argparse.Namespace) -> int:
+    config, store = _open(args)
+    try:
+        result = import_skills(
+            config,
+            store,
+            Path(args.path).expanduser(),
+            link=args.link,
+            dry_run=args.dry_run,
+            force=args.force,
+        )
+    except SkillImportError as exc:
+        _print(red(str(exc)))
+        return 1
+    if args.json:
+        _print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 1 if result["errors"] else 0
+    for row in result["results"]:
+        status = row["status"]
+        if status in {"rejected", "conflict"}:
+            label = red("rejected") if status == "rejected" else yellow("conflict")
+            _print(f"{label} {row['slug']}")
+            for message in row["errors"]:
+                _print(f"  {message}")
+        elif status == "would-import":
+            tags = ", ".join(row["tags"]) or "none"
+            _print(
+                f"{dim('would import')} {row['slug']} -> {row['path']} "
+                f"(category: {row['category']}; tags: {tags})"
+            )
+        elif status == "would-link":
+            tags = ", ".join(row["tags"]) or "none"
+            _print(
+                f"{dim('would link')} {row['slug']} -> {row['path']} "
+                f"(category: {row['category']}; tags: {tags})"
+            )
+        elif status == "linked":
+            _print(f"{green('linked')} {row['slug']} -> {row['path']}")
+        elif status == "unchanged":
+            _print(f"{dim('unchanged')} {row['slug']} is already in this workspace")
+        else:
+            _print(f"{green('imported')} {row['slug']} -> {row['path']}")
+    if result["errors"]:
+        _print(f"{len(result['errors'])} skill(s) not imported")
+        return 1
+    if not args.dry_run:
+        _print(dim("Run `t2s validate --all` to check the imported skills."))
+    return 0
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     home = _home_path(args)
     checks: list[tuple[str, bool, str]] = []
@@ -1816,6 +1867,18 @@ def build_parser() -> argparse.ArgumentParser:
     import_bundle_cmd.add_argument("--force", action="store_true", help="Replace skills that are already installed")
     import_bundle_cmd.add_argument("--json", action="store_true")
     import_bundle_cmd.set_defaults(func=cmd_import_bundle)
+
+    import_cmd = sub.add_parser("import", help="Adopt an existing SKILL.md into the workspace")
+    import_cmd.add_argument("path", help="Skill directory, or a parent that holds several")
+    import_cmd.add_argument(
+        "--link", action="store_true", help="Index the skill where it lives instead of copying it"
+    )
+    import_cmd.add_argument("--dry-run", action="store_true", help="Report what would change and write nothing")
+    import_cmd.add_argument(
+        "--force", action="store_true", help="Replace a workspace skill that has the same name"
+    )
+    import_cmd.add_argument("--json", action="store_true")
+    import_cmd.set_defaults(func=cmd_import)
 
     doctor = sub.add_parser("doctor", help="Check the local environment")
     doctor.add_argument("--json", action="store_true")

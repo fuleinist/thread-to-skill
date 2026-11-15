@@ -68,7 +68,7 @@ def parse_frontmatter(text: str) -> tuple[dict, str]:
     return data, body
 
 
-def validate_skill_dir(path: Path | str) -> list[Issue]:
+def validate_skill_dir(path: Path | str, *, imported: bool | None = None) -> list[Issue]:
     skill_dir = Path(path)
     issues: list[Issue] = []
     skill_md = skill_dir / "SKILL.md"
@@ -102,35 +102,42 @@ def validate_skill_dir(path: Path | str) -> list[Issue]:
         if section.lower() not in body.lower():
             issues.append(Issue("warning", f"missing recommended section: {section}"))
 
+    meta_path = skill_dir / "metadata.json"
+    stored: dict = {}
+    if meta_path.exists():
+        try:
+            loaded = json.loads(meta_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            issues.append(Issue("error", f"metadata.json is invalid JSON: {exc}"))
+            loaded = {}
+        if isinstance(loaded, dict):
+            stored = loaded
+        if stored.get("slug") not in (None, name):
+            issues.append(Issue("error", "metadata.json slug does not match frontmatter.name"))
+    elif not imported:
+        issues.append(Issue("warning", "metadata.json is missing"))
+
+    if imported is None:
+        imported = stored.get("source") == "imported"
+
     metadata = frontmatter.get("metadata")
     if not isinstance(metadata, dict):
-        issues.append(Issue("warning", "frontmatter.metadata is missing; category and tags are unavailable"))
+        if not imported:
+            issues.append(Issue("warning", "frontmatter.metadata is missing; category and tags are unavailable"))
     else:
         category = str(metadata.get("category") or "")
-        if not category:
+        if not category and not imported:
             issues.append(Issue("warning", "metadata.category is missing"))
         tags = metadata.get("tags")
-        if not isinstance(tags, list):
+        if not isinstance(tags, list) and not imported:
             issues.append(Issue("warning", "metadata.tags should be a list"))
         confidence = metadata.get("confidence")
-        if not isinstance(confidence, (int, float)) or not 0 <= float(confidence) <= 1:
+        if not imported and (not isinstance(confidence, (int, float)) or not 0 <= float(confidence) <= 1):
             issues.append(Issue("warning", "metadata.confidence should be a number between 0 and 1"))
 
     reference = skill_dir / "references" / "thread.md"
-    if not reference.exists():
+    if not reference.exists() and not imported:
         issues.append(Issue("warning", "references/thread.md is missing; provenance is incomplete"))
-
-    meta_path = skill_dir / "metadata.json"
-    if meta_path.exists():
-        try:
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            issues.append(Issue("error", f"metadata.json is invalid JSON: {exc}"))
-            meta = {}
-        if isinstance(meta, dict) and meta.get("slug") not in (None, name):
-            issues.append(Issue("error", "metadata.json slug does not match frontmatter.name"))
-    else:
-        issues.append(Issue("warning", "metadata.json is missing"))
 
     _, report = redact_text(body)
     if report.total:
