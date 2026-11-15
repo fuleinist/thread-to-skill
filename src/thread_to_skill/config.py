@@ -66,6 +66,12 @@ class Config:
         return int(self.data.get("gap_minutes") or 60)
 
     @property
+    def locale(self) -> str:
+        # "auto" means detect from the thread text. English is the fallback the
+        # detector answers with when it is not confident.
+        return str(self.data.get("locale") or "").strip() or "auto"
+
+    @property
     def review(self) -> dict[str, Any]:
         value = self.data.get("review")
         return dict(value) if isinstance(value, dict) else {}
@@ -115,6 +121,7 @@ class Config:
                 "version": 1,
                 "created_at": now_iso(),
                 "provider": provider,
+                "locale": "auto",
                 "redact": redact,
                 "gap_minutes": 60,
                 "redact_patterns": [],

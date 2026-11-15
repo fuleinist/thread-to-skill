@@ -48,6 +48,9 @@ STOPWORDS = {
 
 TOKEN_RE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9+#._/-]*")
 SECRET_SAFE_RE = re.compile(r"[^a-z0-9]+")
+# CJK runs become one token per run. This only fires on text that the ASCII
+# pattern cannot match, so English tokenizing is unchanged.
+ALL_TOKEN_RE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9+#._/-]*|[\u3040-\u30ff\u4e00-\u9fff]+")
 
 
 def now_utc() -> _dt.datetime:
@@ -140,14 +143,19 @@ def truncate(text: str, limit: int, note: str = " …") -> str:
     return text[: max(0, limit - len(note))].rstrip() + note
 
 
-def tokenize(text: str) -> list[str]:
-    tokens = [match.group(0).lower() for match in TOKEN_RE.finditer(text or "")]
-    return [token for token in tokens if token not in STOPWORDS and len(token) > 1]
+def tokenize(text: str, extra_stopwords: Iterable[str] | None = None) -> list[str]:
+    blocked = STOPWORDS
+    if extra_stopwords:
+        blocked = STOPWORDS | {str(word).lower() for word in extra_stopwords}
+    tokens = [match.group(0).lower() for match in ALL_TOKEN_RE.finditer(text or "")]
+    return [token for token in tokens if token not in blocked and len(token) > 1]
 
 
-def keyword_counts(text: str, limit: int = 12) -> list[tuple[str, int]]:
+def keyword_counts(
+    text: str, limit: int = 12, extra_stopwords: Iterable[str] | None = None
+) -> list[tuple[str, int]]:
     counts: dict[str, int] = {}
-    for token in tokenize(text):
+    for token in tokenize(text, extra_stopwords):
         if token.isdigit():
             continue
         counts[token] = counts.get(token, 0) + 1
@@ -155,8 +163,10 @@ def keyword_counts(text: str, limit: int = 12) -> list[tuple[str, int]]:
     return ranked[:limit]
 
 
-def shingles(text: str, size: int = 3) -> set[str]:
-    tokens = tokenize(text)
+def shingles(
+    text: str, size: int = 3, extra_stopwords: Iterable[str] | None = None
+) -> set[str]:
+    tokens = tokenize(text, extra_stopwords)
     if not tokens:
         return set()
     if len(tokens) < size:

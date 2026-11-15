@@ -430,6 +430,7 @@ def distill_threads(
     filters: MessageFilters | None = None,
     synthesize: bool = False,
     max_cost: float | None = None,
+    locale: str = "",
 ) -> dict[str, Any]:
     if not threads:
         raise DistillError("No threads selected")
@@ -443,7 +444,11 @@ def distill_threads(
             raise DistillError(str(exc)) from exc
     prompt = build_prompt(threads, synthesize=synthesize)
     if provider.mode == "offline":
-        data = offline_distill(threads)
+        # An explicit locale wins; otherwise use the configured one, which is
+        # "auto" by default and resolves through detection to English. The
+        # getattr keeps stand-in config objects without a locale working.
+        configured = getattr(config, "locale", "") or "auto"
+        data = offline_distill(threads, locale=locale or configured)
         if synthesize:
             data = apply_synthesis(threads, data)
     elif isinstance(provider, ManualProvider):

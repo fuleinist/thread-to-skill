@@ -106,6 +106,7 @@ Turn one or more threads into a skill.
 t2s distill latest
 t2s distill f14de44f6ca5
 t2s distill latest --provider offline
+t2s distill latest --locale zh
 t2s distill latest --provider openai --model gpt-4o-mini
 t2s distill latest --on-duplicate merge
 t2s distill latest --install claude,agents
@@ -119,6 +120,7 @@ t2s distill f14de44f6ca5 9b2c11aa44de --synthesize
 |---|---|---|
 | `threads` | required | Thread IDs, unique prefixes, or `latest` |
 | `--provider` | workspace default | Overrides `config.json` |
+| `--locale` | workspace `locale` | Language pack for offline extraction: `en`, `zh`, `ja`, `de`, `es`, or `auto`; empty uses `config.json`, which defaults to `auto` |
 | `--model` | provider default | Model name |
 | `--base-url` | provider default | OpenAI-compatible or Anthropic base URL |
 | `--api-key-env` | provider default | Read the key from this environment variable |
@@ -150,6 +152,12 @@ Provider notes:
 - `ollama` reads `OLLAMA_HOST`.
 - `command` reads the full prompt on stdin and must write a JSON object to stdout.
 - `manual` writes a prompt to `prompts/` and exits 2.
+
+Locale notes:
+
+- `--locale` affects the offline extractor only. English stays the default and the fallback, and English output is unchanged.
+- `auto` detects Japanese kana and Chinese characters, votes on distinctive German and Spanish keywords, and answers `en` when the evidence is thin. An unknown name warns on stderr and falls back to `en`.
+- Set the workspace default with the `locale` key in `config.json`; `auto` is its default value.
 
 Filter notes:
 
