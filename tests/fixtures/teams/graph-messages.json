@@ -1,0 +1,61 @@
+{
+  "participants": [
+    { "id": "29:1abc", "displayName": "Dana Whitfield" },
+    { "id": "29:1def", "displayName": "Ravi Menon" }
+  ],
+  "value": [
+    {
+      "id": "1700000000001",
+      "messageType": "message",
+      "createdDateTime": "2026-11-12T08:00:00Z",
+      "from": { "user": { "id": "29:1abc" } },
+      "body": {
+        "contentType": "html",
+        "content": "<p>Deploy window moves to Thursday &amp; stays at 21:00.</p>"
+      },
+      "attachments": [
+        { "name": "change-plan.md", "contentType": "reference" }
+      ],
+      "replies": [
+        {
+          "id": "1700000000002",
+          "createdDateTime": "2026-11-12T08:04:00Z",
+          "from": { "user": { "id": "29:1def" } },
+          "body": {
+            "contentType": "html",
+            "content": "<p>Confirm the freeze list first.</p>"
+          }
+        }
+      ]
+    },
+    {
+      "id": "<1700000000003>",
+      "replyToId": "1700000000002",
+      "createdDateTime": "2026-11-12T08:06:00Z",
+      "from": { "user": { "id": "29:1ghi", "displayName": "Priya Shah" } },
+      "body": {
+        "contentType": "text",
+        "content": "I will post the freeze list."
+      }
+    },
+    {
+      "id": "1700000000004",
+      "createdDateTime": "2026-11-12T15:30:00Z",
+      "from": { "user": { "id": "29:1def", "displayName": "Ravi Menon" } },
+      "body": {
+        "contentType": "html",
+        "content": "<p>Reminder: rotate the signing key.</p>"
+      }
+    },
+    {
+      "id": "1700000000005",
+      "replyToId": "1700009999999",
+      "createdDateTime": "2026-11-12T15:36:00Z",
+      "from": { "user": { "id": "29:1abc" } },
+      "body": {
+        "contentType": "text",
+        "content": "Unknown parent message. Keep it."
+      }
+    }
+  ]
+}

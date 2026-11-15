@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Chat history - Project Falcon</title>
+  <style>.ts-message { border-bottom: 1px solid #ddd; }</style>
+</head>
+<body>
+  <nav>Microsoft Teams</nav>
+  <div class="ts-message-list">
+    <div class="ts-message" data-message-id="m-100">
+      <div class="ts-message-header">
+        <span class="ts-message-author">Dana Whitfield</span>
+        <time class="ts-message-time" datetime="2026-11-10T09:05:00Z">10 Nov 2026 09:05</time>
+      </div>
+      <div class="ts-message-body"><p>Nightly rebuild fails on the staging runner.</p></div>
+    </div>
+    <div class="ts-message" data-message-id="m-101" data-reply-to="m-100">
+      <div class="ts-message-header">
+        <span class="ts-message-author">Ravi Menon</span>
+        <time class="ts-message-time" datetime="2026-11-10T09:11:00Z">10 Nov 2026 09:11</time>
+      </div>
+      <div class="ts-message-body">
+        <div class="quoted-reply">Dana Whitfield: Nightly rebuild fails on the staging runner.</div>
+        <p>The cache volume is full. Run the prune first.</p>
+      </div>
+    </div>
+    <div class="ts-message" data-message-id="m-102" data-reply-to="m-101">
+      <div class="ts-message-header">
+        <span class="ts-message-author">Dana Whitfield</span>
+        <time class="ts-message-time" datetime="2026-11-10T09:14:00Z">10 Nov 2026 09:14</time>
+      </div>
+      <div class="ts-message-body"><p>Prune worked. Verify the next build.</p></div>
+    </div>
+    <div class="ts-message" data-message-id="m-103">
+      <div class="ts-message-header">
+        <span class="ts-message-author">Ravi Menon</span>
+        <time class="ts-message-time" datetime="2026-11-10T12:30:00Z">10 Nov 2026 12:30</time>
+      </div>
+      <div class="ts-message-body"><p>Reminder: rotate the signing key.</p></div>
+    </div>
+    <div class="ts-message" data-message-id="m-104">
+      <div class="ts-message-header">
+        <span class="ts-message-author">Dana Whitfield</span>
+        <time class="ts-message-time" datetime="2026-11-10T12:36:00Z">10 Nov 2026 12:36</time>
+      </div>
+      <div class="ts-message-body"><p>Rotation lands with the Thursday deploy.</p></div>
+    </div>
+    <div class="ts-message" data-message-id="m-105">
+      <div class="ts-message-header">
+        <span class="ts-message-author">Priya Shah</span>
+        <time class="ts-message-time" datetime="2026-11-10T12:42:00Z">10 Nov 2026 12:42</time>
+      </div>
+      <div class="ts-message-body"><p>I updated the runbook with the new steps.</p></div>
+    </div>
+  </div>
+  <script>window.__teams = {loaded: true};</script>
+</body>
+</html>
