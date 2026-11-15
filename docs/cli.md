@@ -705,6 +705,43 @@ stays archived after import.
 
 ---
 
+## `t2s import`
+
+```bash
+t2s import ./drafts/my-skill
+t2s import ./drafts --dry-run
+t2s import ./drafts/my-skill --link
+t2s import ./drafts/my-skill --json
+```
+
+Adopts an existing `SKILL.md` into the workspace. The path may be one skill
+directory or a parent that holds several. Every skill passes `t2s validate` at
+error level first. A skill that fails is rejected with the validator's own
+error lines, and the other skills still import.
+
+Generated fields are filled from the skill itself:
+
+- `metadata.category` comes from the body when the frontmatter has none
+- tags come from the body keywords when the frontmatter has none
+- `metadata.json` records `source: "imported"`, an empty `threads` list, and a
+  `null` confidence, so an unscored skill stays unscored
+
+The stub keeps any hand-written fields that already exist. Re-importing the same
+directory replaces the copy and keeps one index row, so the command is
+idempotent.
+
+`--link` indexes the skill where it lives. The command copies nothing and writes
+nothing into the source directory, and the index row records the external path.
+`--dry-run` prints the category, the tags, and the target path for every skill
+and writes nothing. An existing workspace skill with the same name needs
+`--force`.
+
+An imported skill has no source threads. The validator knows the difference: it
+does not expect `references/thread.md`, `metadata.confidence`, or the generator's
+frontmatter block. Imported skills appear in `list` and `suggest` at once.
+
+---
+
 ## `t2s doctor`
 
 ```bash
