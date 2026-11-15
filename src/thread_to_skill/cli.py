@@ -32,6 +32,7 @@ from .hooks import (
 )
 from .install import ALL_HARNESSES, DEFAULT_HARNESSES, install_many
 from .locking import DEFAULT_WAIT_SECONDS, LockError, acquire, release
+from .locales import available_locales
 from .models import Thread
 from .providers import ProviderError, get_provider
 from .redact import redact_thread
@@ -581,6 +582,7 @@ def cmd_distill(args: argparse.Namespace) -> int:
             ),
             synthesize=args.synthesize,
             max_cost=args.max_cost,
+            locale=args.locale,
         )
     except ManualPromptReady as exc:
         _print(f"{yellow('manual')} Distillation prompt written to {exc.path}")
@@ -1663,6 +1665,12 @@ def build_parser() -> argparse.ArgumentParser:
     distill = sub.add_parser("distill", help="Turn thread(s) into a skill")
     distill.add_argument("threads", nargs="+", help="Thread IDs, prefixes, or 'latest'")
     distill.add_argument("--provider", default="", choices=["", "auto", "offline", "openai", "openai-compatible", "anthropic", "ollama", "command", "manual"])
+    distill.add_argument(
+        "--locale",
+        default="",
+        choices=[""] + list(available_locales()) + ["auto"],
+        help="Language pack for offline extraction; empty uses the configured locale",
+    )
     distill.add_argument("--model", default="")
     distill.add_argument("--base-url", default="")
     distill.add_argument("--api-key-env", default="")

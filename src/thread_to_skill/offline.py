@@ -9,38 +9,27 @@ distillation, use an LLM provider.
 from __future__ import annotations
 
 import re
+from types import ModuleType
 from typing import Iterable
 
+from .locales import en, get_pack, resolve_locale
 from .models import Thread
 from .taxonomy import category_label, normalize_category, normalize_tags, score_category
 from .util import clamp, keyword_counts, slugify, tokenize, truncate
 
-SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
-CUE_ACTION = (
-    "we should", "you should", "let's", "we need to", "make sure", "the fix",
-    "the solution", "the workaround", "step ", "first,", "first ", "then ",
-    "next,", "instead", "use ", "run ", "add ", "remove ", "change ", "update ",
-    "set ", "check ", "verify ", "configure ", "install ", "deploy ", "restart ",
-    "pin ", "revert ", "roll back", "rollback", "try ", "do ", "only retry",
-    "freeze ", "post ", "tag ", "watch ", "introduce ", "revoke ",
-)
-CUE_FIX = ("the fix is", "the solution is", "the workaround is", "to fix", "root cause is")
-CUE_DECISION = (
-    "we decided", "decided to", "decided:", "the decision", "we agreed",
-    "agreed to", "let's go with", "we'll use", "we will use", "the plan is",
-    "we're going with",
-)
-CUE_PITFALL = (
-    "don't", "do not", "avoid", "gotcha", "watch out", "careful", "be careful",
-    "the problem is", "this breaks", "it breaks", "failed because", "mistake",
-    "anti-pattern", "never ", "not supported", "doesn't work", "does not work",
-)
-CUE_VERIFY = (
-    "verify", "verification", "check that", "confirm", "make sure", "test that",
-    "validate", "should see", "expected", "assert", "smoke test", "run the test",
-    "i added a test", "added a test",
-)
-GREETING = ("thanks", "thank you", "hi ", "hello", "hey ", "lgtm", "sounds good", "cool", "nice", "perfect")
+# CJK sentence endings are split without a following space. English splitting
+# is unchanged because these punctuation marks never appear in English text.
+SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|(?<=[。！？])|\n+")
+
+# English is the default pack. These names are re-exported from locales.en for
+# callers and tests that import them; extraction itself uses the pack resolved
+# for the run.
+CUE_ACTION = en.CUE_ACTION
+CUE_FIX = en.CUE_FIX
+CUE_DECISION = en.CUE_DECISION
+CUE_PITFALL = en.CUE_PITFALL
+CUE_VERIFY = en.CUE_VERIFY
+GREETING = en.GREETING
 CODE_HINT = (
     "```", "$ ", "npm ", "pnpm ", "yarn ", "pip ", "python ", "git ", "docker ",
     "kubectl ", "curl ", "make ", "cargo ", "go test", "pytest ", "psql ",
@@ -116,22 +105,22 @@ def _has_cue(sentence: str, cues: Iterable[str]) -> bool:
     return False
 
 
-def _score(sentence: str, index: int) -> float:
+def _score(sentence: str, index: int, pack: ModuleType) -> float:
     low = sentence.lower()
     score = 0.0
-    if _has_cue(low, CUE_ACTION):
+    if _has_cue(low, pack.CUE_ACTION):
         score += 3.0
-    if _has_cue(low, CUE_FIX):
+    if _has_cue(low, pack.CUE_FIX):
         score += 3.5
-    if _has_cue(low, CUE_DECISION):
+    if _has_cue(low, pack.CUE_DECISION):
         score += 3.0
-    if _has_cue(low, CUE_PITFALL):
+    if _has_cue(low, pack.CUE_PITFALL):
         score += 2.5
-    if _has_cue(low, CUE_VERIFY):
+    if _has_cue(low, pack.CUE_VERIFY):
         score += 2.0
     if any(hint in low for hint in CODE_HINT):
         score += 2.0
-    if any(low.startswith(greeting) for greeting in GREETING):
+    if any(low.startswith(greeting) for greeting in pack.GREETING):
         score -= 3.0
     if sentence.endswith("?"):
         score -= 1.0
@@ -143,11 +132,11 @@ def _score(sentence: str, index: int) -> float:
     return score
 
 
-def _pick(sentences: list[str], predicate, limit: int) -> list[str]:
+def _pick(sentences: list[str], predicate, limit: int, pack: ModuleType) -> list[str]:
     scored = []
     for index, sentence in enumerate(sentences):
         if predicate(sentence):
-            scored.append((_score(sentence, index), sentence))
+            scored.append((_score(sentence, index, pack), sentence))
     scored.sort(key=lambda item: item[0], reverse=True)
     output: list[str] = []
     seen = set()
@@ -162,16 +151,16 @@ def _pick(sentences: list[str], predicate, limit: int) -> list[str]:
     return output
 
 
-def _is_verify(sentence: str) -> bool:
-    return _has_cue(sentence, CUE_VERIFY) or sentence.lower().startswith("verification:")
+def _is_verify(sentence: str, pack: ModuleType) -> bool:
+    return _has_cue(sentence, pack.CUE_VERIFY) or sentence.lower().startswith("verification:")
 
 
-def _is_pitfall(sentence: str) -> bool:
-    return _has_cue(sentence, CUE_PITFALL) or sentence.lower().startswith(("gotcha", "pitfall", "watch out"))
+def _is_pitfall(sentence: str, pack: ModuleType) -> bool:
+    return _has_cue(sentence, pack.CUE_PITFALL) or sentence.lower().startswith(("gotcha", "pitfall", "watch out"))
 
 
-def _is_decision(sentence: str) -> bool:
-    return _has_cue(sentence, CUE_DECISION)
+def _is_decision(sentence: str, pack: ModuleType) -> bool:
+    return _has_cue(sentence, pack.CUE_DECISION)
 
 
 def _flat_line(text: str) -> str:
@@ -328,8 +317,11 @@ def _display_title(raw: str) -> str:
     return text[:1].upper() + text[1:]
 
 
-def _slug_from_title(title: str) -> str:
-    tokens = [token for token in tokenize(title) if not token.isdigit() and token not in WEAK_SLUG_WORDS]
+def _slug_from_title(title: str, extra_stopwords: Iterable[str] | None = None) -> str:
+    tokens = [
+        token for token in tokenize(title, extra_stopwords)
+        if not token.isdigit() and token not in WEAK_SLUG_WORDS
+    ]
     seen: list[str] = []
     for token in tokens:
         if token not in seen:
@@ -370,14 +362,14 @@ def _split_sequence(sentence: str) -> list[str]:
     return []
 
 
-def _summary_from(sentences: list[str], threads: list[Thread]) -> str:
+def _summary_from(sentences: list[str], threads: list[Thread], pack: ModuleType) -> str:
     fixes = [
         sentence for sentence in sentences
-        if _has_cue(sentence, CUE_FIX) and not _is_pitfall(sentence) and not _is_verify(sentence)
+        if _has_cue(sentence, pack.CUE_FIX) and not _is_pitfall(sentence, pack) and not _is_verify(sentence, pack)
     ]
     decisions_clean = [
         _clean_step(sentence) for sentence in sentences
-        if _is_decision(sentence) and not _is_pitfall(sentence) and not _is_verify(sentence)
+        if _is_decision(sentence, pack) and not _is_pitfall(sentence, pack) and not _is_verify(sentence, pack)
     ]
     preferred: list[str] = []
     if fixes:
@@ -392,9 +384,9 @@ def _summary_from(sentences: list[str], threads: list[Thread]) -> str:
                 sentence
                 for sentence in sentences
                 if not sentence.endswith("?")
-                and not _is_verify(sentence)
-                and not _is_pitfall(sentence)
-                and not any(sentence.lower().startswith(greeting) for greeting in GREETING)
+                and not _is_verify(sentence, pack)
+                and not _is_pitfall(sentence, pack)
+                and not any(sentence.lower().startswith(greeting) for greeting in pack.GREETING)
             ),
             "",
         )
@@ -449,32 +441,34 @@ def _commands(text: str) -> list[str]:
     return commands
 
 
-def offline_distill(threads: list[Thread]) -> dict:
+def offline_distill(threads: list[Thread], locale: str | None = None) -> dict:
     # Extract from message bodies only. Rendered transcripts include
     # "[id] author (timestamp):" prefixes that would otherwise pollute titles.
     combined = "\n".join(
         message.text for thread in threads for message in thread.messages if message.text
     )
+    pack = get_pack(resolve_locale(locale or "", combined))
     sentences = _sentences(combined)
     actions = _pick(
         sentences,
         lambda s: (
-            _has_cue(s, CUE_ACTION)
-            and not _is_verify(s)
-            and not _is_pitfall(s)
-            and not _is_decision(s)
+            _has_cue(s, pack.CUE_ACTION)
+            and not _is_verify(s, pack)
+            and not _is_pitfall(s, pack)
+            and not _is_decision(s, pack)
             and not _is_explanation(s)
         ),
         10,
+        pack,
     )
-    pitfalls = _pick(sentences, _is_pitfall, 5)
-    checks = _pick(sentences, _is_verify, 4)
-    decisions = _pick(sentences, _is_decision, 5)
+    pitfalls = _pick(sentences, lambda s: _is_pitfall(s, pack), 5, pack)
+    checks = _pick(sentences, lambda s: _is_verify(s, pack), 4, pack)
+    decisions = _pick(sentences, lambda s: _is_decision(s, pack), 5, pack)
     commands = _commands(combined)
 
     raw_title = _display_title(threads[0].title if threads else "")
     title = raw_title or "Conversation playbook"
-    keywords = keyword_counts(combined, limit=18)
+    keywords = keyword_counts(combined, limit=18, extra_stopwords=pack.EXTRA_STOPWORDS)
 
     def good_tag(value: str) -> bool:
         if value in WEAK_TAGS or len(value) < 3:
@@ -487,7 +481,10 @@ def offline_distill(threads: list[Thread]) -> dict:
             return False
         return True
 
-    title_tags = [token for token in tokenize(title) if not token.isdigit() and good_tag(token)]
+    title_tags = [
+        token for token in tokenize(title, pack.EXTRA_STOPWORDS)
+        if not token.isdigit() and good_tag(token)
+    ]
     keyword_tags = [word for word, _ in keywords if good_tag(word)]
     tags = normalize_tags(title_tags[:4] + keyword_tags)
     category_leaf = normalize_category(score_category(combined)[0]).split("/")[-1]
@@ -504,7 +501,7 @@ def offline_distill(threads: list[Thread]) -> dict:
     if not triggers:
         triggers = tags[:5]
 
-    summary = _summary_from(sentences, threads)
+    summary = _summary_from(sentences, threads, pack)
 
     steps: list[str] = []
     for sentence in actions:
@@ -624,5 +621,5 @@ def offline_distill(threads: list[Thread]) -> dict:
         },
         "extractor": "offline-v1",
         "category_scores": category_scores,
-        "slug_hint": _slug_from_title(title),
+        "slug_hint": _slug_from_title(title, pack.EXTRA_STOPWORDS),
     }
