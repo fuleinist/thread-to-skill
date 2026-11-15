@@ -13,9 +13,10 @@ from .discord import load_discord
 from .generic import load_json, load_jsonl, load_markdown, load_text
 from .html_transcript import load_html
 from .slack import load_slack
+from .teams import is_teams_html, is_teams_json_text, load_teams
 from .whatsapp import ANDROID_RE, IOS_RE, load_whatsapp
 
-FORMATS = {"auto", "slack", "discord", "whatsapp", "telegram", "jsonl", "json", "markdown", "text", "html"}
+FORMATS = {"auto", "slack", "discord", "whatsapp", "teams", "telegram", "jsonl", "json", "markdown", "text", "html"}
 
 
 def _read_prefix(path: Path, limit: int = 200_000) -> str:
@@ -39,6 +40,8 @@ def detect_format(path: Path) -> str:
     if suffix == ".zip":
         return "zip"
     if suffix in {".html", ".htm"}:
+        if is_teams_html(_read_prefix(path, 20_000)):
+            return "teams"
         return "html"
     if suffix == ".jsonl" or suffix == ".ndjson":
         return "jsonl"
@@ -51,8 +54,11 @@ def detect_format(path: Path) -> str:
                 return "whatsapp"
         return "text"
     if suffix == ".json":
+        prefix = _read_prefix(path)
+        if is_teams_json_text(prefix):
+            return "teams"
         try:
-            data = json.loads(_read_prefix(path))
+            data = json.loads(prefix)
         except (json.JSONDecodeError, ValueError):
             return "json"
         if isinstance(data, dict) and isinstance(data.get("messages"), list):
@@ -104,6 +110,8 @@ def load_path(
         threads = load_discord(path, gap_minutes, channel, title)
     elif fmt == "whatsapp":
         threads = load_whatsapp(path, gap_minutes, channel, title)
+    elif fmt == "teams":
+        threads = load_teams(path, gap_minutes, channel, title)
     elif fmt == "telegram":
         from .generic import load_telegram
 

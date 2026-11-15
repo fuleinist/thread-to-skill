@@ -45,6 +45,8 @@ Load exports into the local index.
 ```bash
 t2s ingest ./slack-export
 t2s ingest ./discord.json ./whatsapp.txt
+t2s ingest "./Chat history - Project Falcon.html"
+t2s ingest ./graph-messages.json --format teams
 t2s ingest ./export.zip --format auto
 t2s ingest ./messages.jsonl --gap-minutes 30
 t2s ingest ./slack-export --json
@@ -53,7 +55,7 @@ t2s ingest ./slack-export --force
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--format` | `auto` | `auto`, `slack`, `discord`, `whatsapp`, `telegram`, `jsonl`, `json`, `markdown`, `text`, `html` |
+| `--format` | `auto` | `auto`, `slack`, `discord`, `whatsapp`, `teams`, `telegram`, `jsonl`, `json`, `markdown`, `text`, `html` |
 | `--gap-minutes` | `60` | Split unthreaded messages on this quiet gap |
 | `--channel` | from export | Override the channel name |
 | `--title` | first line | Override the thread title |

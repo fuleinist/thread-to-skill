@@ -37,7 +37,7 @@ A production incident gets debugged at 2am. Someone finds the root cause, writes
 
 The knowledge is real. It is just trapped in a conversation.
 
-**Thread to Skills** reads the Slack, Discord, or WhatsApp thread you already have and compiles it into a portable [Agent Skill](https://agentskills.io): a `SKILL.md` your agent can load on demand, with the procedure, decision rules, pitfalls, verification steps, and provenance intact.
+**Thread to Skills** reads the Slack, Discord, WhatsApp, or Teams thread you already have and compiles it into a portable [Agent Skill](https://agentskills.io): a `SKILL.md` your agent can load on demand, with the procedure, decision rules, pitfalls, verification steps, and provenance intact.
 
 It is not a summary. It is a reusable operating procedure.
 
@@ -87,6 +87,8 @@ t2s init --provider offline
 t2s ingest ~/Downloads/slack-export
 t2s ingest ./discord-export.json
 t2s ingest ./WhatsApp\ Chat.txt
+t2s ingest "./Chat history - Project Falcon.html"
+t2s ingest ./graph-messages.json
 
 # 4. Distill the latest thread into a skill
 t2s distill latest
@@ -176,7 +178,7 @@ metadata:
   <img src="docs/assets/architecture.svg" alt="Architecture: capture, ingest and redact, distill, portable skill, index, proactive hooks, harnesses, feedback" width="100%">
 </p>
 
-1. **Capture** — Slack workspace exports, DiscordChatExporter JSON, WhatsApp `.txt`, Telegram JSON, JSONL, generic JSON, Markdown, plain text, saved HTML pages (`.html` / `.htm`, best-effort: repeated author-and-timestamp blocks, otherwise one document), and ZIPs.
+1. **Capture** - Slack workspace exports, DiscordChatExporter JSON, WhatsApp `.txt`, Microsoft Teams HTML history exports and Graph API JSON, Telegram JSON, JSONL, generic JSON, Markdown, plain text, saved HTML pages (`.html` / `.htm`, best-effort: repeated author-and-timestamp blocks, otherwise one document), and ZIPs.
 2. **Ingest & redact** — reconstruct threads, split unthreaded messages on a quiet gap, normalize timestamps and mentions, then remove tokens, keys, emails, phone numbers, private IPs, and credentials in URLs. Custom regexes are supported.
 3. **Distill** — offline heuristics or an LLM extract decisions, ordered steps, conditions, pitfalls, and verification checks. Every claim keeps its source message IDs.
 4. **Render** — write a validated `SKILL.md`, a redacted `references/thread.md`, and machine-readable `metadata.json`.

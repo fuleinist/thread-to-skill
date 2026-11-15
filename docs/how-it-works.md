@@ -49,6 +49,8 @@ ingest ──► redact ──► normalize ──► distill ──► render �
 | Telegram JSON | `messages` with `from` fields | `reply_to_message_id` chains; quiet-gap fallback |
 | JSONL | one object per line | `thread_id` / `conversation_id`, otherwise quiet-gap windows |
 | Generic JSON | `messages` list or `{thread: [...]}` | `thread_id` / `conversation_id`, otherwise a single conversation |
+| Microsoft Teams HTML history export | `ts-message` classes, `data-tid="message-..."`, or a `teams.microsoft.com` link | `data-reply-to` chains; standalone messages grouped by quiet gap |
+| Microsoft Teams Graph JSON | `createdDateTime` with `replyToId` or `messageType` | `replyToId` chains, including nested `replies`; author ids resolve through the participant list |
 | HTML | `.html` / `.htm` | best-effort: repeated blocks that hold an author and a timestamp; otherwise one document |
 | Markdown | `.md` / `.markdown` | one document, section headings preserved |
 | Plain text | `.txt` that is not a WhatsApp export | one document |
@@ -64,6 +66,16 @@ is recorded in `thread.extra` as `html_heuristic` (`blocks` or
 `single-document`) with `html_block_count`, and the fallback prints a
 `RuntimeWarning`. A timestamp that cannot be parsed keeps its raw text; a time is
 never invented.
+
+A saved Teams page takes the dedicated Teams path before the generic HTML path.
+It is recognized by a Teams marker, not by its file name. Message containers are
+found by class token (`ts-message` and its variants), by `data-message-id`, or by
+`data-tid`, so tenant markup changes do not break the split. The author line, the
+timestamp, and quoted replies are removed from the body. Graph JSON is recognized
+by `createdDateTime` together with `replyToId` or `messageType`. Nested `replies`
+are flattened once, a reply to a reply resolves to the same root, and an author
+that carries only a user id resolves through `participants`, `members`, or
+`users`. An unknown `replyToId` never invents a parent.
 
 The default quiet gap is 60 minutes. Change it with `--gap-minutes` or `config.json`.
 
