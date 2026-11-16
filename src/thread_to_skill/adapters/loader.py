@@ -16,8 +16,9 @@ from .matrix import is_matrix_json_text, load_matrix
 from .slack import load_slack
 from .teams import is_teams_html, is_teams_json_text, load_teams
 from .whatsapp import ANDROID_RE, IOS_RE, load_whatsapp
+from .zulip import is_zulip_json_text, load_zulip
 
-FORMATS = {"auto", "slack", "discord", "whatsapp", "teams", "matrix", "telegram", "jsonl", "json", "markdown", "text", "html"}
+FORMATS = {"auto", "slack", "discord", "whatsapp", "teams", "matrix", "zulip", "telegram", "jsonl", "json", "markdown", "text", "html"}
 
 
 def _read_prefix(path: Path, limit: int = 200_000) -> str:
@@ -60,6 +61,8 @@ def detect_format(path: Path) -> str:
             return "teams"
         if is_matrix_json_text(prefix):
             return "matrix"
+        if is_zulip_json_text(prefix):
+            return "zulip"
         try:
             data = json.loads(prefix)
         except (json.JSONDecodeError, ValueError):
@@ -117,6 +120,8 @@ def load_path(
         threads = load_teams(path, gap_minutes, channel, title)
     elif fmt == "matrix":
         threads = load_matrix(path, gap_minutes, channel, title)
+    elif fmt == "zulip":
+        threads = load_zulip(path, gap_minutes, channel, title)
     elif fmt == "telegram":
         from .generic import load_telegram
 
