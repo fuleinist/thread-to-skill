@@ -55,7 +55,7 @@ t2s ingest ./slack-export --force
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--format` | `auto` | `auto`, `slack`, `discord`, `whatsapp`, `teams`, `matrix`, `telegram`, `jsonl`, `json`, `markdown`, `text`, `html` |
+| `--format` | `auto` | `auto`, `slack`, `discord`, `whatsapp`, `teams`, `matrix`, `zulip`, `telegram`, `jsonl`, `json`, `markdown`, `text`, `html` |
 | `--gap-minutes` | `60` | Split unthreaded messages on this quiet gap |
 | `--channel` | from export | Override the channel name |
 | `--title` | first line | Override the thread title |

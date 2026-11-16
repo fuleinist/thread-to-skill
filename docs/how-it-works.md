@@ -51,6 +51,7 @@ ingest ──► redact ──► normalize ──► distill ──► render �
 | Generic JSON | `messages` list or `{thread: [...]}` | `thread_id` / `conversation_id`, otherwise a single conversation |
 | Microsoft Teams HTML history export | `ts-message` classes, `data-tid="message-..."`, or a `teams.microsoft.com` link | `data-reply-to` chains; standalone messages grouped by quiet gap |
 | Microsoft Teams Graph JSON | `createdDateTime` with `replyToId` or `messageType` | `replyToId` chains, including nested `replies`; author ids resolve through the participant list |
+| Zulip export JSON | `sender_full_name` with `subject` and `timestamp` | one thread per topic (`subject`); messages without a subject group by quiet gap |
 | HTML | `.html` / `.htm` | best-effort: repeated blocks that hold an author and a timestamp; otherwise one document |
 | Markdown | `.md` / `.markdown` | one document, section headings preserved |
 | Plain text | `.txt` that is not a WhatsApp export | one document |

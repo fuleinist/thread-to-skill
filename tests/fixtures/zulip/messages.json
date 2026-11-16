@@ -1,0 +1,92 @@
+[
+  {
+    "id": 101,
+    "sender_id": 7,
+    "sender_full_name": "Alice Chen",
+    "sender_email": "alice@example.com",
+    "timestamp": 1794470400,
+    "content": "@**Bob Lee** please run `npm test` in **staging** before the tag.",
+    "subject": "Release checklist",
+    "type": "stream",
+    "display_recipient": "engineering",
+    "recipient_id": 12
+  },
+  {
+    "id": 102,
+    "sender_id": 9,
+    "sender_full_name": "Bob Lee",
+    "sender_email": "bob@example.com",
+    "timestamp": 1794470460,
+    "content": "Done. Logs:\n```\n**all green**\n```",
+    "subject": "Release checklist",
+    "type": "stream",
+    "display_recipient": "engineering",
+    "recipient_id": 12
+  },
+  {
+    "id": 103,
+    "sender_id": 7,
+    "sender_full_name": "Alice Chen",
+    "sender_email": "alice@example.com",
+    "timestamp": 1794470520,
+    "content": "Tag is `v0.7.0`. [Runbook](https://example.com/runbook) updated.",
+    "subject": "Release checklist",
+    "type": "stream",
+    "display_recipient": "engineering",
+    "recipient_id": 12
+  },
+  {
+    "id": 201,
+    "sender_id": 11,
+    "sender_full_name": "Carol Diaz",
+    "sender_email": "carol@example.com",
+    "timestamp": 1794474000,
+    "content": "Root cause was **stale cache** on the edge node.",
+    "subject": "Incident review",
+    "type": "stream",
+    "display_recipient": "engineering",
+    "recipient_id": 12
+  },
+  {
+    "id": 202,
+    "sender_id": 9,
+    "sender_full_name": "Bob Lee",
+    "sender_email": "bob@example.com",
+    "timestamp": 1794474120,
+    "content": "Added a guard in `src/cache.py`. *Reopen* if it fires again.",
+    "subject": "Incident review",
+    "type": "stream",
+    "display_recipient": "engineering",
+    "recipient_id": 12
+  },
+  {
+    "id": 301,
+    "sender_id": 7,
+    "sender_full_name": "Alice Chen",
+    "sender_email": "alice@example.com",
+    "timestamp": 1794477600,
+    "content": "Can you take the **handover** note?",
+    "subject": "",
+    "type": "private",
+    "display_recipient": [
+      {"id": 7, "email": "alice@example.com", "full_name": "Alice Chen"},
+      {"id": 11, "email": "carol@example.com", "full_name": "Carol Diaz"}
+    ],
+    "recipient_id": 41
+  },
+  {
+    "id": 302,
+    "sender_id": 11,
+    "sender_full_name": "Carol Diaz",
+    "sender_email": "carol@example.com",
+    "timestamp": 1794477900,
+    "content": "Yes. I will post it after the standup.",
+    "subject": "",
+    "type": "private",
+    "display_recipient": [
+      {"id": 7, "email": "alice@example.com", "full_name": "Alice Chen"},
+      {"id": 11, "email": "carol@example.com", "full_name": "Carol Diaz"}
+    ],
+    "recipient_id": 41
+  }
+]
