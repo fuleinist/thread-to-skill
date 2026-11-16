@@ -1,0 +1,99 @@
+[
+  {
+    "event_id": "$create-100",
+    "type": "m.room.create",
+    "sender": "@alice:example.org",
+    "origin_server_ts": 1794470000000,
+    "content": { "room_version": "10" }
+  },
+  {
+    "event_id": "$root-101",
+    "type": "m.room.message",
+    "sender": "@alice:example.org",
+    "origin_server_ts": 1794470400000,
+    "content": {
+      "body": "Deploy window moves to Thursday and stays at 21:00.",
+      "msgtype": "m.text"
+    }
+  },
+  {
+    "event_id": "$member-102",
+    "type": "m.room.member",
+    "sender": "@bob:example.org",
+    "origin_server_ts": 1794470520000,
+    "content": { "membership": "join", "displayname": "Bob Example" }
+  },
+  {
+    "event_id": "$reply-103",
+    "type": "m.room.message",
+    "sender": "@bob:example.org",
+    "origin_server_ts": 1794470670000,
+    "content": {
+      "body": "Confirmed. The freeze list needs signing off first.",
+      "msgtype": "m.text",
+      "m.relates_to": { "m.in_reply_to": { "event_id": "$root-101" } }
+    }
+  },
+  {
+    "event_id": "$reply-104",
+    "type": "m.room.message",
+    "sender": "@carol:example.org",
+    "origin_server_ts": 1794470760000,
+    "content": {
+      "body": "I will post the freeze list after the sign-off.",
+      "msgtype": "m.text",
+      "m.relates_to": { "m.in_reply_to": { "event_id": "$reply-103" } }
+    }
+  },
+  {
+    "event_id": "$reaction-105",
+    "type": "m.reaction",
+    "sender": "@carol:example.org",
+    "origin_server_ts": 1794470790000,
+    "content": {
+      "m.relates_to": {
+        "rel_type": "m.annotation",
+        "event_id": "$root-101",
+        "key": "👍"
+      }
+    }
+  },
+  {
+    "event_id": "$topic-106",
+    "type": "m.room.topic",
+    "sender": "@alice:example.org",
+    "origin_server_ts": 1794470820000,
+    "content": { "topic": "Release planning" }
+  },
+  {
+    "event_id": "$msg-107",
+    "type": "m.room.message",
+    "sender": "@bob:example.org",
+    "origin_server_ts": 1794475815000,
+    "content": {
+      "body": "Reminder: rotate the signing key before the freeze.",
+      "msgtype": "m.text"
+    }
+  },
+  {
+    "event_id": "$msg-108",
+    "type": "m.room.message",
+    "sender": "@alice:example.org",
+    "origin_server_ts": 1794476205000,
+    "content": {
+      "body": "Key rotation is on the checklist already.",
+      "msgtype": "m.text"
+    }
+  },
+  {
+    "event_id": "$msg-109",
+    "type": "m.room.message",
+    "sender": "@bob:example.org",
+    "origin_server_ts": 1794478350000,
+    "content": {
+      "body": "Unknown parent event. Keep this message.",
+      "msgtype": "m.text",
+      "m.relates_to": { "m.in_reply_to": { "event_id": "$missing-999" } }
+    }
+  }
+]
