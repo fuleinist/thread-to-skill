@@ -12,11 +12,12 @@ from ..models import Thread
 from .discord import load_discord
 from .generic import load_json, load_jsonl, load_markdown, load_text
 from .html_transcript import load_html
+from .matrix import is_matrix_json_text, load_matrix
 from .slack import load_slack
 from .teams import is_teams_html, is_teams_json_text, load_teams
 from .whatsapp import ANDROID_RE, IOS_RE, load_whatsapp
 
-FORMATS = {"auto", "slack", "discord", "whatsapp", "teams", "telegram", "jsonl", "json", "markdown", "text", "html"}
+FORMATS = {"auto", "slack", "discord", "whatsapp", "teams", "matrix", "telegram", "jsonl", "json", "markdown", "text", "html"}
 
 
 def _read_prefix(path: Path, limit: int = 200_000) -> str:
@@ -57,6 +58,8 @@ def detect_format(path: Path) -> str:
         prefix = _read_prefix(path)
         if is_teams_json_text(prefix):
             return "teams"
+        if is_matrix_json_text(prefix):
+            return "matrix"
         try:
             data = json.loads(prefix)
         except (json.JSONDecodeError, ValueError):
@@ -112,6 +115,8 @@ def load_path(
         threads = load_whatsapp(path, gap_minutes, channel, title)
     elif fmt == "teams":
         threads = load_teams(path, gap_minutes, channel, title)
+    elif fmt == "matrix":
+        threads = load_matrix(path, gap_minutes, channel, title)
     elif fmt == "telegram":
         from .generic import load_telegram
 
