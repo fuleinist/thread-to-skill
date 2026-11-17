@@ -1,0 +1,52 @@
+{
+  "guild": {"id": "9001", "name": "Acme"},
+  "channel": {
+    "id": "9200",
+    "name": "release-notes",
+    "type": "Forum"
+  },
+  "messages": [
+    {
+      "id": "3001",
+      "type": "Default",
+      "timestamp": "2026-11-06T08:02:00+00:00",
+      "author": {"id": "2", "name": "Sam Ito", "nickname": "sam"},
+      "content": "Post for the v1.15 notes. I will write the breaking changes first, then the migration steps."
+    },
+    {
+      "id": "3002",
+      "type": "Default",
+      "timestamp": "2026-11-06T09:31:00+00:00",
+      "author": {"id": "3", "name": "Ana Ruiz", "nickname": "ana"},
+      "content": "Breaking change: the migration image tag must match the app image tag. A mismatch is a hard failure now."
+    },
+    {
+      "id": "3003",
+      "type": "Default",
+      "timestamp": "2026-11-06T12:15:00+00:00",
+      "author": {"id": "1", "name": "Mira Sol", "nickname": "mira"},
+      "content": "Migration step: run the upgrade job before the rollout, never after, or the old pods read the new schema."
+    },
+    {
+      "id": "3004",
+      "type": "Default",
+      "timestamp": "2026-11-07T02:40:00+00:00",
+      "author": {"id": "2", "name": "Sam Ito", "nickname": "sam"},
+      "content": "Notes draft is in the release branch. I kept every command from the incident so the reader can copy it."
+    },
+    {
+      "id": "3005",
+      "type": "Default",
+      "timestamp": "2026-11-07T05:12:00+00:00",
+      "author": {"id": "3", "name": "Ana Ruiz", "nickname": "ana"},
+      "content": "Decision: publish the notes with the verification checklist as its own section, because that is what people skip."
+    },
+    {
+      "id": "3006",
+      "type": "Default",
+      "timestamp": "2026-11-07T11:48:00+00:00",
+      "author": {"id": "1", "name": "Mira Sol", "nickname": "mira"},
+      "content": "Verification before publish: the checklist names a command for every step, and no step depends on a private dashboard."
+    }
+  ]
+}

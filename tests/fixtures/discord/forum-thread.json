@@ -1,0 +1,40 @@
+{
+  "guild": {"id": "9001", "name": "Acme"},
+  "channel": {
+    "id": "9100",
+    "name": "deploy-window-q4",
+    "type": "PublicThread",
+    "parentId": "9000"
+  },
+  "messages": [
+    {
+      "id": "2001",
+      "type": "Default",
+      "timestamp": "2026-11-03T09:14:00+00:00",
+      "author": {"id": "1", "name": "Mira Sol", "nickname": "mira"},
+      "content": "Opening the Q4 deploy window. The freeze starts when the release tag is cut."
+    },
+    {
+      "id": "2002",
+      "type": "Default",
+      "timestamp": "2026-11-03T09:16:00+00:00",
+      "author": {"id": "2", "name": "Sam Ito", "nickname": "sam"},
+      "content": "Tag cut at v1.14.0, so the window is open for three hours."
+    },
+    {
+      "id": "2003",
+      "type": "Default",
+      "timestamp": "2026-11-03T11:05:00+00:00",
+      "author": {"id": "3", "name": "Ana Ruiz", "nickname": "ana"},
+      "content": "Decision: close the window early if the same smoke job fails twice.",
+      "reference": {"messageId": "2001", "channelId": "9100"}
+    },
+    {
+      "id": "2004",
+      "type": "Default",
+      "timestamp": "2026-11-03T13:40:00+00:00",
+      "author": {"id": "1", "name": "Mira Sol", "nickname": "mira"},
+      "content": "Verification: the smoke job passed on the first attempt, so the window stays open until 13:44 UTC."
+    }
+  ]
+}

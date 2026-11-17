@@ -1,0 +1,82 @@
+{
+  "guild": {"id": "9001", "name": "Acme"},
+  "channel": {
+    "id": "9300",
+    "name": "questions",
+    "type": "Forum"
+  },
+  "messages": [
+    {
+      "id": "4001",
+      "type": "Default",
+      "timestamp": "2026-11-08T10:02:00+00:00",
+      "threadId": "9310",
+      "threadName": "why did the migration job skip",
+      "author": {"id": "4", "name": "Bo Kan", "nickname": "bo"},
+      "content": "The migration job skipped on staging and nothing said why. Where do I look first?"
+    },
+    {
+      "id": "4002",
+      "type": "Default",
+      "timestamp": "2026-11-08T10:05:00+00:00",
+      "threadId": "9320",
+      "threadName": "how do I pin the migration image tag",
+      "author": {"id": "5", "name": "Dana Cole", "nickname": "dana"},
+      "content": "How do I pin the migration image so it cannot drift from the app image?"
+    },
+    {
+      "id": "4003",
+      "type": "Default",
+      "timestamp": "2026-11-08T10:08:00+00:00",
+      "threadId": "9310",
+      "threadName": "why did the migration job skip",
+      "author": {"id": "2", "name": "Sam Ito", "nickname": "sam"},
+      "content": "Check the job's skip condition first. The job is skipped when the schema version already matches the target."
+    },
+    {
+      "id": "4004",
+      "type": "Default",
+      "timestamp": "2026-11-08T10:12:00+00:00",
+      "threadId": "9320",
+      "threadName": "how do I pin the migration image tag",
+      "author": {"id": "3", "name": "Ana Ruiz", "nickname": "ana"},
+      "content": "Read the tag from one build arg and pass the same value to both jobs. Two sources is how drift starts."
+    },
+    {
+      "id": "4005",
+      "type": "Default",
+      "timestamp": "2026-11-08T11:31:00+00:00",
+      "threadId": "9310",
+      "threadName": "why did the migration job skip",
+      "author": {"id": "4", "name": "Bo Kan", "nickname": "bo"},
+      "content": "It matched, so the skip was correct. Decision: I will print the recorded schema version in the job log so this is obvious next time."
+    },
+    {
+      "id": "4006",
+      "type": "Default",
+      "timestamp": "2026-11-08T11:47:00+00:00",
+      "threadId": "9320",
+      "threadName": "how do I pin the migration image tag",
+      "author": {"id": "5", "name": "Dana Cole", "nickname": "dana"},
+      "content": "Decision: pin the tag in the deploy manifest, not in the shell, because the shell path runs on a developer laptop."
+    },
+    {
+      "id": "4007",
+      "type": "Default",
+      "timestamp": "2026-11-08T13:02:00+00:00",
+      "threadId": "9310",
+      "threadName": "why did the migration job skip",
+      "author": {"id": "1", "name": "Mira Sol", "nickname": "mira"},
+      "content": "Verification for the next run: the log prints the recorded version and the target version before the skip check runs."
+    },
+    {
+      "id": "4008",
+      "type": "Default",
+      "timestamp": "2026-11-08T13:20:00+00:00",
+      "threadId": "9320",
+      "threadName": "how do I pin the migration image tag",
+      "author": {"id": "3", "name": "Ana Ruiz", "nickname": "ana"},
+      "content": "Verification: build the manifest twice with different tags and the second deploy fails at the gate."
+    }
+  ]
+}
