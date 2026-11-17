@@ -78,6 +78,13 @@ def detect_format(path: Path) -> str:
                 for item in data["messages"][:5]
             ):
                 return "telegram"
+        if isinstance(data, dict):
+            # A bundle has no top-level messages list, only per-entry messages.
+            raw_entries = data.get("channels")
+            if isinstance(raw_entries, list) and any(
+                isinstance(item, dict) and isinstance(item.get("messages"), list) for item in raw_entries
+            ):
+                return "discord"
         return "json"
     return "unknown"
 

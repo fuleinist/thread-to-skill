@@ -98,6 +98,31 @@ everything was skipped, and ends with a summary of the three counts.
 
 Each entry keeps the keys it had before plus `status`.
 
+### Discord forum posts and thread channels
+
+A DiscordChatExporter file for a forum or a thread channel describes itself in
+the channel metadata, so the file already is one conversation. `channel.type`
+says what the file is, and `channel.parentId` names the parent. A file for one
+thread channel (`PublicThread`, `PrivateThread`, `AnnouncementThread`) or one
+forum post is one thread: every message in the file belongs to it, the quiet-gap
+window is not used, and the channel name becomes the title when `--title` is not
+given. `thread_key` is `<channel_id>:thread` and `extra` carries
+`channel_id`, `channel_type`, `parent_id`, and `thread: true`.
+
+A forum file can hold several posts. Each message then names its post through
+`threadId`, `thread_id`, `meta.thread_id`, or `reference.channelId`, in that
+order, and each post becomes one thread with key `<channel_id>:<post_id>`. The
+post name becomes the title, and `extra` carries the raw `channel_type` and the
+`post_id`. A forum file whose messages name no post is still one thread.
+
+A bundle is a dict whose `channels` or `threads` key holds entries, each with
+its own messages. One entry is one thread, with key `<entry_id>:channel` and the
+entry name as the channel and title. Entries with no messages are skipped, and a
+dict whose `channels` list holds message lists is detected as `discord`.
+
+Ordinary text channel exports are unchanged: they still build threads from reply
+references and split the rest on `--gap-minutes`.
+
 ---
 
 ## `t2s distill`

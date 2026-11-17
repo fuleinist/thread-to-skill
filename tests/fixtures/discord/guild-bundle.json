@@ -1,0 +1,55 @@
+{
+  "guild": {"id": "9001", "name": "Acme"},
+  "exported_at": "2026-11-09T02:11:00+00:00",
+  "channels": [
+    {
+      "id": "9400",
+      "name": "deploy-notices",
+      "type": "TextChannel",
+      "messages": [
+        {
+          "id": "5001",
+          "type": "Default",
+          "timestamp": "2026-11-09T01:04:00+00:00",
+          "author": {"id": "1", "name": "Mira Sol", "nickname": "mira"},
+          "content": "Notice: deploys to prod are paused while the migration image tag is pinned in the manifest."
+        },
+        {
+          "id": "5002",
+          "type": "Default",
+          "timestamp": "2026-11-09T01:22:00+00:00",
+          "author": {"id": "3", "name": "Ana Ruiz", "nickname": "ana"},
+          "content": "Rule for the pause window: a deploy that carries its own tag is allowed, anything else waits."
+        },
+        {
+          "id": "5003",
+          "type": "Default",
+          "timestamp": "2026-11-09T01:51:00+00:00",
+          "author": {"id": "2", "name": "Sam Ito", "nickname": "sam"},
+          "content": "The pause lifts when the gate that compares the two tags is on the release job."
+        }
+      ]
+    },
+    {
+      "id": "9401",
+      "name": "release-checklist",
+      "type": "Forum",
+      "messages": [
+        {
+          "id": "5101",
+          "type": "Default",
+          "timestamp": "2026-11-09T01:10:00+00:00",
+          "author": {"id": "4", "name": "Bo Kan", "nickname": "bo"},
+          "content": "Checklist order for a tagged release: pin the tag, run the migration job, then roll the app."
+        },
+        {
+          "id": "5102",
+          "type": "Default",
+          "timestamp": "2026-11-09T01:44:00+00:00",
+          "author": {"id": "5", "name": "Dana Cole", "nickname": "dana"},
+          "content": "Add the verification step: the recorded schema version matches the target before any pod is replaced."
+        }
+      ]
+    }
+  ]
+}
