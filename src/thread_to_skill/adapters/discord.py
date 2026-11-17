@@ -23,12 +23,54 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ..models import Message, Thread
+from ..models import Attachment, Message, Thread
 from .common import clean_mentions, first_line, group_messages, make_thread
 
 # Channel type names after the Guild prefix is dropped.
 THREAD_TYPES = {"publicthread", "privatethread", "announcementthread", "thread"}
 FORUM_TYPES = {"forum", "media"}
+
+
+def _kind_from_content_type(value: str) -> str:
+    low = value.strip().lower()
+    if low.startswith("image/"):
+        return "image"
+    if low.startswith("video/"):
+        return "video"
+    if low.startswith("audio/"):
+        return "audio"
+    return "file"
+
+
+def _attachments(raw: dict[str, Any]) -> list[Attachment]:
+    """Files and embeds of one message as structured attachments.
+
+    A Discord export keeps files under ``attachments`` and link previews under
+    ``embeds``. The embed body is the part a skill needs, because it holds the
+    documentation the thread points at.
+    """
+    result: list[Attachment] = []
+    for attachment in raw.get("attachments") or []:
+        if not isinstance(attachment, dict):
+            continue
+        name = str(attachment.get("fileName") or attachment.get("filename") or "").strip()
+        url = str(attachment.get("url") or "").strip()
+        kind = _kind_from_content_type(
+            str(attachment.get("content_type") or attachment.get("contentType") or "")
+        )
+        if not (name or url):
+            continue
+        result.append(Attachment(kind=kind, name=name or url, url=url))
+    for embed in raw.get("embeds") or []:
+        if not isinstance(embed, dict):
+            continue
+        title = str(embed.get("title") or "").strip()
+        description = str(embed.get("description") or "").strip()
+        url = str(embed.get("url") or "").strip()
+        if not (title or description or url):
+            continue
+        result.append(Attachment(kind="embed", name=title or url, url=url, text=description))
+    return result
 
 
 def _text(raw: dict[str, Any]) -> str:
@@ -47,10 +89,6 @@ def _message(raw: dict[str, Any]) -> Message:
         author_name = author.get("name") or author.get("nickname") or author.get("id") or "unknown"
     else:
         author_name = str(author)
-    attachments = []
-    for attachment in raw.get("attachments") or []:
-        if isinstance(attachment, dict):
-            attachments.append(str(attachment.get("fileName") or attachment.get("filename") or attachment.get("url") or "attachment"))
     reactions = []
     for reaction in raw.get("reactions") or []:
         if isinstance(reaction, dict):
@@ -68,7 +106,7 @@ def _message(raw: dict[str, Any]) -> Message:
         text=_text(raw),
         reply_to=str(reply_to) if reply_to else None,
         reactions=reactions,
-        attachments=attachments,
+        attachments=_attachments(raw),
     )
 
 

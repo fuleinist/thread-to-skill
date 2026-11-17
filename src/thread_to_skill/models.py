@@ -9,6 +9,58 @@ from .util import content_hash, parse_timestamp, stable_id
 
 
 @dataclass
+class Attachment:
+    """One attachment on a message: a file, an image, or an embed.
+
+    ``kind`` is a short label such as ``file``, ``image``, or ``embed``.
+    ``name`` is the label a reader sees, ``url`` is where the item lives, and
+    ``text`` is any body text the export gives the item, such as an embed
+    description.
+    """
+
+    kind: str = "file"
+    name: str = ""
+    url: str = ""
+    text: str = ""
+
+    @classmethod
+    def from_value(cls, value: Any) -> "Attachment":
+        """Read an attachment from an export value or from a stored record.
+
+        Old normalized threads store a plain string per attachment, so a
+        string keeps its label and gains an empty URL. A partial dict never
+        raises. A value of another type becomes an empty attachment so the
+        caller can drop it with ``render()``.
+        """
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, dict):
+            return cls(
+                kind=str(value.get("kind") or "").strip() or "file",
+                name=str(value.get("name") or "").strip(),
+                url=str(value.get("url") or "").strip(),
+                text=str(value.get("text") or "").strip(),
+            )
+        label = "" if value is None else str(value).strip()
+        return cls(kind="file", name=label)
+
+    @property
+    def label(self) -> str:
+        return self.name or self.text or self.url
+
+    def to_dict(self) -> dict[str, str]:
+        return {"kind": self.kind, "name": self.name, "url": self.url, "text": self.text}
+
+    def render(self) -> str:
+        label = self.label
+        if not label:
+            return ""
+        if self.url and self.url != label:
+            return f"{label} ({self.url})"
+        return label
+
+
+@dataclass
 class Message:
     id: str
     ts: str
@@ -16,7 +68,7 @@ class Message:
     text: str
     reply_to: str | None = None
     reactions: list[dict[str, Any]] = field(default_factory=list)
-    attachments: list[str] = field(default_factory=list)
+    attachments: list[Attachment] = field(default_factory=list)
     meta: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -28,7 +80,7 @@ class Message:
             text=str(data.get("text", "")),
             reply_to=(str(data["reply_to"]) if data.get("reply_to") not in (None, "") else None),
             reactions=list(data.get("reactions") or []),
-            attachments=[str(item) for item in (data.get("attachments") or [])],
+            attachments=[Attachment.from_value(item) for item in (data.get("attachments") or [])],
             meta=dict(data.get("meta") or {}),
         )
 
@@ -40,14 +92,15 @@ class Message:
             "text": self.text,
             "reply_to": self.reply_to,
             "reactions": self.reactions,
-            "attachments": self.attachments,
+            "attachments": [attachment.to_dict() for attachment in self.attachments],
             "meta": self.meta,
         }
 
     def render(self) -> str:
         attachment_note = ""
-        if self.attachments:
-            attachment_note = " [attachments: " + ", ".join(self.attachments) + "]"
+        rendered = [note for note in (attachment.render() for attachment in self.attachments) if note]
+        if rendered:
+            attachment_note = " [attachments: " + ", ".join(rendered) + "]"
         return f"[{self.id}] {self.author} ({self.ts}): {self.text}{attachment_note}"
 
 

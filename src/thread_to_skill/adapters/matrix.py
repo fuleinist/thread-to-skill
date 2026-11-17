@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..models import Message, Thread
+from ..models import Attachment, Message, Thread
 from .common import first_line, group_messages, make_thread
 
 SOURCE = "matrix"
@@ -47,6 +47,32 @@ ENCRYPTED_ERROR = (
 DETECT_MARKERS = ('"m.room.message"', '"m.room.encrypted"')
 REPLY_KEY = "m.relates_to"
 IN_REPLY_KEY = "m.in_reply_to"
+
+# Message types that carry a file. The message body is the reader-facing label.
+FILE_KINDS = {
+    "m.image": "image",
+    "m.file": "file",
+    "m.audio": "audio",
+    "m.video": "video",
+}
+
+
+def _file_attachment(content: dict[str, Any]) -> Attachment | None:
+    """One attachment from a file event, or None for a plain text event.
+
+    The body of a file event repeats the filename, so it becomes ``text`` only
+    when it says something more than the name.
+    """
+    msgtype = str(content.get("msgtype") or "").strip().lower()
+    kind = FILE_KINDS.get(msgtype, "")
+    url = str(content.get("url") or "").strip()
+    filename = str(content.get("filename") or "").strip()
+    body = str(content.get("body") or "").strip()
+    if not (kind or url or filename):
+        return None
+    name = filename or body
+    text = body if body and body != filename else ""
+    return Attachment(kind=kind or "file", name=name, url=url, text=text)
 
 
 def is_matrix_json_text(text: str) -> bool:
@@ -107,12 +133,14 @@ def _event_message(raw: dict[str, Any], index: int) -> Message:
     relates = content.get(REPLY_KEY) if isinstance(content.get(REPLY_KEY), dict) else {}
     in_reply = relates.get(IN_REPLY_KEY) if isinstance(relates.get(IN_REPLY_KEY), dict) else {}
     ident = _clean_id(raw.get("event_id") or "")
+    attachment = _file_attachment(content)
     return Message(
         id=ident or f"matrix-event-{index}",
         ts=_iso_utc(raw.get("origin_server_ts")),
         author=_display_name(raw.get("sender")),
         text=str(content.get("body") or ""),
         reply_to=_clean_id(in_reply.get("event_id") or "") or None,
+        attachments=[attachment] if attachment else [],
         meta={"matrix_event_type": str(raw.get("type") or "")},
     )
 

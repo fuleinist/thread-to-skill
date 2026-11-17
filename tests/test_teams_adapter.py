@@ -111,7 +111,8 @@ class TeamsGraphTests(unittest.TestCase):
         first = next(message for message in self.messages if message.id == "1700000000001")
         self.assertIn("Thursday & stays", first.text)
         self.assertNotIn("<p>", first.text)
-        self.assertEqual(first.attachments, ["change-plan.md"])
+        self.assertEqual([item.name for item in first.attachments], ["change-plan.md"])
+        self.assertEqual(first.attachments[0].kind, "reference")
         self.assertEqual(first.meta["teams_message_type"], "message")
 
     def test_unknown_parent_never_invents_a_parent(self):
