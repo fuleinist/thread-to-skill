@@ -187,6 +187,8 @@ hermes plugins doctor ~/.hermes/plugins/thread2skill
 hermes plugins enable thread2skill
 ```
 
+CI tests this plugin against Hermes 0.23.2. The job generates the plugin with project scope and runs `hermes plugins doctor --ci`; see `.github/workflows/hermes-plugin.yml`.
+
 Hermes injects the returned context into the current user message. It runs in both CLI and gateway sessions. Skills install to `~/.hermes/skills/<category>/<slug>/`, matching Hermes’ category-partitioned layout.
 
 ---

@@ -1,0 +1,38 @@
+name: Hermes plugin doctor
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hermes-plugin-doctor:
+    name: hermes plugins doctor
+    runs-on: ubuntu-latest
+    # Non-blocking for normal PR CI. A contract break still reports failure.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          # Hermes gates ruamel.yaml to 3.14 and its CLI imports it unconditionally.
+          python-version: "3.14"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+      - name: Install the tested Hermes version
+        run: |
+          git clone --depth 1 --branch v0.23.2 https://github.com/NousResearch/hermes-agent.git "$RUNNER_TEMP/hermes-src"
+          python -m pip install -e "$RUNNER_TEMP/hermes-src"
+      - name: Create isolated project directory
+        run: mkdir -p "$RUNNER_TEMP/hermes-project"
+      - name: Generate plugin with project scope (keeps the checkout clean)
+        working-directory: ${{ runner.temp }}/hermes-project
+        run: t2s hooks install --harness hermes --scope project
+      - name: Assert the manifest declares pre_llm_call
+        run: grep -q 'pre_llm_call' "$RUNNER_TEMP/hermes-project/.hermes/plugins/thread2skill/plugin.yaml"
+      - name: Run hermes plugins doctor
+        run: hermes plugins doctor "$RUNNER_TEMP/hermes-project/.hermes/plugins/thread2skill" --ci
