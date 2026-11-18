@@ -797,6 +797,27 @@ command says so. The check fails when a database is newer than the tool.
 
 ---
 
+## `t2s serve`
+
+```bash
+t2s serve --mcp
+```
+
+Serves the local skill library to an agent host over MCP. The transport is stdio, so messages are
+newline-delimited JSON-RPC 2.0. The server exits with code 0 when the input closes.
+
+Four read-only tools are exposed: `search_skills`, `get_skill`, `suggest_skills`, and
+`list_skills`. No tool changes the workspace, and `suggest_skills` records no usage. The command
+takes no workspace lock, so a running server never blocks `t2s ingest` or `t2s distill`.
+
+`get_skill` returns the exact `SKILL.md` text from disk plus the parsed metadata, so an edit on
+disk shows up without a re-index.
+
+See [MCP server](mcp.md) for the tool schemas, the error codes, and setup for Claude Code, Cursor,
+and OpenClaw.
+
+---
+
 ## `t2s version`
 
 ```bash
