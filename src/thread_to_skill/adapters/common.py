@@ -6,7 +6,7 @@ import datetime as dt
 import re
 from typing import Iterable, Sequence
 
-from ..models import Message, Thread
+from ..models import Attachment, Message, Thread
 from ..util import parse_timestamp
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}")
@@ -128,6 +128,6 @@ def message_from_generic(
         text=clean_mentions(text_value),
         reply_to=str(reply_to) if reply_to not in (None, "") else None,
         reactions=[item if isinstance(item, dict) else {"name": str(item)} for item in reactions],
-        attachments=[str(item) for item in attachments],
+        attachments=[Attachment.from_value(item) for item in attachments],
         meta=dict(meta or {}),
     )

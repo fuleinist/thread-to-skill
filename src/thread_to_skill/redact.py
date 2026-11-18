@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .models import Message, Thread
+from .models import Attachment, Message, Thread
 
 # Ordered from most specific to least specific. Each pattern is paired with a
 # replacement label; counts are reported so users can see what was removed.
@@ -174,11 +174,22 @@ def redact_thread(thread: Thread, custom_patterns: list[str] | None = None) -> t
     for message in thread.messages:
         cleaned_text, text_report = redact_text(message.text, custom_patterns)
         report.merge(text_report)
-        attachments: list[str] = []
+        attachments: list[Attachment] = []
         for attachment in message.attachments:
-            cleaned_attachment, attachment_report = redact_text(attachment, custom_patterns)
+            cleaned_name, name_report = redact_text(attachment.name, custom_patterns)
+            cleaned_url, url_report = redact_text(attachment.url, custom_patterns)
+            cleaned_text, attachment_report = redact_text(attachment.text, custom_patterns)
+            report.merge(name_report)
+            report.merge(url_report)
             report.merge(attachment_report)
-            attachments.append(cleaned_attachment)
+            attachments.append(
+                Attachment(
+                    kind=attachment.kind,
+                    name=cleaned_name,
+                    url=cleaned_url,
+                    text=cleaned_text,
+                )
+            )
         messages.append(
             Message(
                 id=message.id,

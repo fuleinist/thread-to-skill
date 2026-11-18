@@ -23,7 +23,7 @@ import warnings
 from pathlib import Path
 from typing import Any, Iterator
 
-from ..models import Message, Thread
+from ..models import Attachment, Message, Thread
 from ..util import parse_timestamp
 from .common import first_line, group_messages, make_thread
 from .html_transcript import BLOCK_TAGS, _Node, _TreeBuilder, _collapse, _looks_timestamp
@@ -325,10 +325,22 @@ def _graph_message(raw: dict[str, Any], members: dict[str, str], index: int) -> 
     content = str(body.get("content") or "")
     content_type = str(body.get("contentType") or "").lower()
     text = _plain_text(content) if content_type == "text" else _html_to_text(content)
-    attachments: list[str] = []
+    attachments: list[Attachment] = []
     for item in raw.get("attachments") or []:
-        if isinstance(item, dict):
-            attachments.append(str(item.get("name") or item.get("contentUrl") or "attachment"))
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        url = str(item.get("contentUrl") or "").strip()
+        if not (name or url):
+            continue
+        attachments.append(
+            Attachment(
+                kind=str(item.get("contentType") or "").strip().lower() or "file",
+                name=name or url,
+                url=url,
+                text=str(item.get("content") or "").strip(),
+            )
+        )
     meta: dict[str, Any] = {"teams_shape": "graph"}
     if raw.get("messageType"):
         meta["teams_message_type"] = str(raw.get("messageType"))

@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .models import Thread
+from .models import Attachment, Thread
 from .store import DEFAULT_SNAPSHOT_KEEP, SNAPSHOT_FILES, list_snapshots, snapshot_dir
 from .taxonomy import category_label
 from .util import ensure_dir, now_iso, truncate
@@ -260,6 +260,17 @@ def render_skill_md(slug: str, data: dict[str, Any], *, version: int, created_at
     return "\n".join(lines).strip() + "\n"
 
 
+def _attachment_line(attachment: Attachment) -> str:
+    """One readable line per attachment, linked when a URL exists."""
+    label = attachment.name or attachment.text or attachment.url
+    if not label:
+        return ""
+    kind = attachment.kind or "file"
+    if attachment.url:
+        return f"- [{label}]({attachment.url}) ({kind})"
+    return f"- {label} ({kind})"
+
+
 def render_reference(threads: list[Thread], *, limit: int = 120_000) -> str:
     lines = [
         "# Source thread",
@@ -284,6 +295,14 @@ def render_reference(threads: list[Thread], *, limit: int = 120_000) -> str:
             if used + len(block) > limit:
                 lines.append("\n*[reference truncated]*\n")
                 return "\n".join(lines)
+            attachment_lines = [
+                line for line in (_attachment_line(item) for item in message.attachments) if line
+            ]
+            if attachment_lines:
+                block += "\n".join(attachment_lines) + "\n"
+                if used + len(block) > limit:
+                    lines.append("\n*[reference truncated]*\n")
+                    return "\n".join(lines)
             lines.append(block)
             used += len(block)
         lines.append("---")

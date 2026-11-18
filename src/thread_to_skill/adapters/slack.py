@@ -20,9 +20,36 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from ..models import Message, Thread
+from ..models import Attachment, Message, Thread
 from ..util import parse_timestamp, read_json
 from .common import clean_mentions, first_line, group_messages, make_thread
+
+
+IMAGE_FILETYPES = {"png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "heic"}
+VIDEO_FILETYPES = {"mp4", "mov", "webm", "avi", "mkv"}
+AUDIO_FILETYPES = {"mp3", "wav", "m4a", "ogg", "flac"}
+
+
+def _file_attachment(file: dict[str, Any]) -> Attachment:
+    """Build a structured attachment from one Slack file record."""
+    filetype = str(file.get("filetype") or "").strip().lower()
+    mimetype = str(file.get("mimetype") or "").strip().lower()
+    if mimetype.startswith("image/") or filetype in IMAGE_FILETYPES:
+        kind = "image"
+    elif mimetype.startswith("video/") or filetype in VIDEO_FILETYPES:
+        kind = "video"
+    elif mimetype.startswith("audio/") or filetype in AUDIO_FILETYPES:
+        kind = "audio"
+    else:
+        kind = "file"
+    title = str(file.get("title") or "").strip()
+    name = str(file.get("name") or "").strip() or title
+    url = str(
+        file.get("url_private") or file.get("permalink") or file.get("url_private_download") or ""
+    ).strip()
+    comment = str(file.get("initial_comment") or "").strip()
+    text = title if title and title != name else comment
+    return Attachment(kind=kind, name=name, url=url, text=text)
 
 
 def _load_users(root: Path) -> dict[str, str]:
@@ -69,10 +96,10 @@ def _message(raw: dict[str, Any], users: dict[str, str]) -> Message:
     user = raw.get("user") or raw.get("bot_id") or "unknown"
     author = users.get(str(user), str(user))
     files = raw.get("files") or []
-    attachments: list[str] = []
+    attachments: list[Attachment] = []
     for file in files:
         if isinstance(file, dict):
-            attachments.append(str(file.get("name") or file.get("title") or "attachment"))
+            attachments.append(_file_attachment(file))
     reactions = []
     for reaction in raw.get("reactions") or []:
         if isinstance(reaction, dict):

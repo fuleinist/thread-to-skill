@@ -20,8 +20,8 @@ def _message_from_mapping(raw: dict[str, Any], index: int) -> Message:
     text = raw.get("text") or raw.get("content") or raw.get("message") or raw.get("body") or ""
     reply_to = raw.get("reply_to") or raw.get("reply_to_message_id") or raw.get("thread_ts")
     attachments = raw.get("attachments") or []
-    if isinstance(attachments, list):
-        attachments = [item.get("name") if isinstance(item, dict) else str(item) for item in attachments]
+    if not isinstance(attachments, list):
+        attachments = [attachments]
     reactions = raw.get("reactions") or []
     return message_from_generic(
         ident=str(ident),
