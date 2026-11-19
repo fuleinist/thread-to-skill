@@ -21,6 +21,7 @@
   <a href="#quickstart">Quickstart</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#harness-support">Harnesses</a> ·
+  <a href="#mcp">MCP</a> ·
   <a href="#the-self-improvement-loop">Self-improvement</a> ·
   <a href="#privacy">Privacy</a> ·
   <a href="#cli">CLI</a> ·
@@ -89,6 +90,8 @@ t2s ingest ./discord-export.json
 t2s ingest ./WhatsApp\ Chat.txt
 t2s ingest "./Chat history - Project Falcon.html"
 t2s ingest ./graph-messages.json
+t2s ingest ./zulip-export.json
+t2s ingest ./matrix-room-export.json
 
 # 4. Distill the latest thread into a skill
 t2s distill latest
@@ -112,6 +115,19 @@ t2s distill latest --provider ollama --model llama3.1
 
 # Any command that reads a prompt on stdin and writes JSON on stdout
 t2s distill latest --provider command --command "my-distiller"
+```
+
+Narrow the input, merge related threads, or read a non-English thread:
+
+```bash
+# Keep a date window and drop bot noise
+t2s distill latest --since 2026-10-01 --until 2026-11-01 --exclude-bots
+
+# Merge threads that describe the same work into one skill
+t2s distill <thread-a> <thread-b> --synthesize
+
+# Use a locale pack for offline extraction
+t2s distill latest --locale zh
 ```
 
 When a similar skill already exists, Thread to Skills tells you. Merge the new evidence into it instead of creating another near-duplicate:
@@ -178,9 +194,9 @@ metadata:
   <img src="docs/assets/architecture.svg" alt="Architecture: capture, ingest and redact, distill, portable skill, index, proactive hooks, harnesses, feedback" width="100%">
 </p>
 
-1. **Capture** - Slack workspace exports, DiscordChatExporter JSON, WhatsApp `.txt`, Microsoft Teams HTML history exports and Graph API JSON, Zulip JSON exports, Telegram JSON, JSONL, generic JSON, Markdown, plain text, saved HTML pages (`.html` / `.htm`, best-effort: repeated author-and-timestamp blocks, otherwise one document), and ZIPs.
+1. **Capture** - Slack workspace exports, DiscordChatExporter JSON (including forum posts and thread channels), WhatsApp `.txt`, Microsoft Teams HTML history exports and Graph API JSON, Zulip JSON exports, Matrix room exports, Telegram JSON, JSONL, generic JSON, Markdown, plain text, saved HTML pages (`.html` / `.htm`, best-effort: repeated author-and-timestamp blocks, otherwise one document), and ZIPs. Attachments, embeds, and link previews are kept as structured records with their kind, name, URL, and text.
 2. **Ingest & redact** — reconstruct threads, split unthreaded messages on a quiet gap, normalize timestamps and mentions, then remove tokens, keys, emails, phone numbers, private IPs, and credentials in URLs. Custom regexes are supported.
-3. **Distill** — offline heuristics or an LLM extract decisions, ordered steps, conditions, pitfalls, and verification checks. Every claim keeps its source message IDs.
+3. **Distill** — offline heuristics or an LLM extract decisions, ordered steps, conditions, pitfalls, and verification checks. Every claim keeps its source message IDs. Filters (`--since`, `--until`, `--participants`, `--exclude-bots`) narrow the input first, `--synthesize` merges related threads into one procedure and names contradictions, and `--locale` selects a non-English cue pack for offline extraction. LLM runs record token usage and estimated cost.
 4. **Render** — write a validated `SKILL.md`, a redacted `references/thread.md`, and machine-readable `metadata.json`.
 5. **Index** — store skills and threads in a local SQLite database with FTS5 search, duplicate detection, and usage scoring.
 6. **Suggest** — hooks match the current prompt against the library and inject only the relevant skills.
@@ -217,6 +233,12 @@ Hooks call `t2s suggest`. Keep `t2s` on `PATH`, or set `T2S_BIN` to its absolute
 Nothing appears after a prompt that should match? Run `t2s hooks doctor`. It names the failing host and the reason. The exit code is non-zero when a detected hook is broken.
 
 > **Scope:** v0.1 writes the documented hook shapes and covers them with fixtures. Agent harness APIs move quickly; after installing a hook, run a prompt that should match and verify the suggestion appears in your host version. Details and manual snippets: [docs/hooks.md](docs/hooks.md).
+
+---
+
+## MCP
+
+`t2s serve --mcp` exposes the local library to agent hosts that prefer explicit tools over prompt hooks. The server speaks newline-delimited JSON-RPC 2.0 on stdio and offers four read-only tools: `search_skills`, `get_skill`, `suggest_skills`, and `list_skills`. It opens no network listener, takes no workspace lock, and records no usage, so a running server never blocks `ingest` or `distill`. Setup for Claude Code, Cursor, and OpenClaw: [docs/mcp.md](docs/mcp.md).
 
 ---
 
@@ -305,10 +327,17 @@ t2s doctor
 | `t2s show <slug>` | Show a skill, or `--raw` for the full `SKILL.md` |
 | `t2s diff <slug>` | Compare two stored versions of a skill, with `--stat` or `--json` |
 | `t2s edit <slug>` | Amend a skill by hand, then re-index it |
+| `t2s archive <slug>` | Archive a skill and keep its files |
+| `t2s unarchive <slug>` | Restore an archived skill to active |
+| `t2s delete <slug>` | Move a skill bundle to the workspace trash |
 | `t2s search <query>` | Full-text search across local skills |
 | `t2s suggest <prompt>` | Rank skills for a prompt; used by hooks |
 | `t2s feedback <slug>` | Record `worked`, `failed`, `accepted`, or `suggested` |
 | `t2s install <slug>` | Copy a skill into harness skill roots |
+| `t2s import <path>` | Adopt existing `SKILL.md` files into the workspace |
+| `t2s export --out <file>` | Write a portable, checksummed skill bundle |
+| `t2s import-bundle <file>` | Verify and install skills from a bundle |
+| `t2s serve --mcp` | Serve the library to an agent host over MCP |
 | `t2s hooks install` | Write proactive-suggestion hooks for supported harnesses |
 | `t2s hooks doctor` | Verify installed hooks, their files, and the resolved command |
 | `t2s validate` | Check generated skills against the Agent Skills format |
@@ -317,6 +346,15 @@ t2s doctor
 | `t2s doctor` | Check Python, workspace, SQLite, PATH, and provider keys |
 
 Full options: [docs/cli.md](docs/cli.md).
+
+Moving a library between machines is one command each way:
+
+```bash
+t2s export --out skills.tar.gz --category engineering
+t2s import-bundle skills.tar.gz
+```
+
+A bundle is a gzipped tar with a `manifest.json` and one directory per skill. Every shipped file carries a SHA-256 digest and a byte size, and `import-bundle` verifies the manifest, the digests, and the member list before it writes anything. `references/` holds raw transcripts, so it stays out unless you pass `--include-references`.
 
 `t2s edit` amends a skill by hand and re-indexes it. A manual prose edit is not
 durable. A later `t2s distill --on-duplicate merge` re-renders the skill from
@@ -359,15 +397,24 @@ It is not RAG over chat history. Retrieval finds similar messages. Thread to Ski
 
 ## Status
 
-**v0.1.0 — first public version.** The core CLI, offline and LLM distillation, redaction, registry, installers, hooks, validation, and test suite are working. Expect the skill schema and hook adapters to evolve as harness APIs change.
+**v0.1.0 is the only tagged release, and a large unreleased line has landed on `main` since.** The core CLI, offline and LLM distillation, redaction, registry, installers, hooks, and validation are working. Since v0.1.0:
+
+- **Adapters** — Microsoft Teams (HTML history and Graph JSON), Matrix, Zulip, and a conservative HTML transcript reader; Discord forum posts and thread channels; attachments, embeds, and link previews preserved as structured records.
+- **Extraction** — implicit-decision detection, multi-thread synthesis with conflict reporting, locale packs for Chinese, Japanese, German, and Spanish, and time-window or participant filters.
+- **Lifecycle** — `t2s review`, `archive`, `unarchive`, `delete`, `diff`, `edit`, and `import`.
+- **Distribution** — `export` / `import-bundle` for checksummed portable libraries, and a tag-driven PyPI release workflow.
+- **Infrastructure** — an MCP server, schema migrations for `index.db`, an advisory workspace write lock, content-hash ingest skipping, token and cost accounting, `t2s hooks doctor`, and `t2s stats` breakdowns.
+
+Expect the skill schema and hook adapters to evolve as harness APIs change.
 
 Roadmap:
 
-- More adapters (Discord forum posts and thread channels, exported HTML variants).
-- Better offline extraction for implicit decisions and multi-thread synthesis.
-- A `t2s review` workflow for stale and conflicting skills.
-- Optional signed skill bundles for team distribution.
-- PyPI release and a Homebrew formula.
+- Cut a PyPI release; the publishing workflow is in place.
+- A Homebrew formula.
+- Signed skill bundles for team distribution.
+- Publishing a skill to GitHub or ClawHub from the CLI.
+- Cursor context injection if the hook API supports it.
+- CI that exercises the OpenClaw and Hermes plugins against real hosts.
 
 ---
 
@@ -376,8 +423,10 @@ Roadmap:
 - [How it works](docs/how-it-works.md)
 - [Architecture](docs/architecture.md)
 - [Harness hooks](docs/hooks.md)
+- [MCP server](docs/mcp.md)
 - [Skill format](docs/skill-format.md)
 - [CLI reference](docs/cli.md)
+- [Releasing](docs/releasing.md)
 - [FAQ](docs/faq.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
