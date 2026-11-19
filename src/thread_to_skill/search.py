@@ -68,7 +68,14 @@ def suggest_skills(
     limit: int = 3,
     threshold: float = 0.18,
     category: str = "",
+    record: bool = True,
 ) -> list[dict[str, object]]:
+    """Rank the skills that match a prompt.
+
+    ``record`` writes the suggestion to the usage log and bumps the suggested
+    counter, which the hook path wants. A read-only caller passes False, so a
+    suggestion made over MCP never changes the workspace.
+    """
     candidates = store.list_skills(category=category, status="active", limit=1000)
     ranked: list[tuple[float, Skill, list[str]]] = []
     for skill in candidates:
@@ -92,7 +99,7 @@ def suggest_skills(
                 "path": skill.path,
             }
         )
-    if results:
+    if results and record:
         store.record_event(
             "suggested",
             data={"prompt": prompt[:500], "skills": [item["slug"] for item in results]},

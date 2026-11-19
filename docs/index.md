@@ -5,6 +5,7 @@
 - [Harness hooks](hooks.md) — Claude Code, Cursor, DeepSeek Harness, Hermes, OpenClaw
 - [Skill format](skill-format.md) — frontmatter, metadata, body, validation
 - [CLI reference](cli.md) — every command and option
+- [MCP server](mcp.md) - read-only tools for agent hosts that prefer explicit tools
 - [FAQ](faq.md) — privacy, providers, duplicates, hooks, limitations
 
 Start with the [README](../README.md) for the quickstart and the demo.

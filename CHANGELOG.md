@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- An MCP server. `t2s serve --mcp` serves the local skill library over MCP on stdio,
+  using newline-delimited JSON-RPC 2.0. Four read-only tools are exposed: `search_skills`
+  returns slug, title, description, and score; `get_skill` returns the exact `SKILL.md`
+  text read from disk plus the parsed metadata, so an edit on disk shows up without a
+  re-index; `suggest_skills` returns the ranked matches with a reason for each one; and
+  `list_skills` returns full records with optional category, tag, and status filters.
+  Every tool declares `readOnlyHint`, so no call changes the workspace: `suggest_skills`
+  records no usage and does not bump the suggested counter. The server takes no workspace
+  lock, opens no network listener, needs no new dependency, and exits with code 0 when the
+  input closes. An unknown tool returns -32602, an unknown method returns -32601, a
+  malformed line returns -32700, and an unknown slug returns a tool result with isError
+  set. `docs/mcp.md` documents the transport, the tool schemas, and setup for Claude Code,
+  Cursor, and OpenClaw.
+
 - Structured attachments. `Message.attachments` now holds records with `kind`, `name`, `url`, and `text` instead of bare strings, so a distilled skill keeps the document a thread points at. Slack files keep the private URL, the permalink fallback, the mimetype, and the title. Discord files keep the file name, the URL, and a kind from the content type, and Discord embeds keep the title, the description, and the URL. Teams attachments keep the name, the content URL, and the content type. Matrix file events keep the URL and the file name, with the kind taken from the message type. `references/thread.md` renders each attachment as a markdown link, and the distillation context carries the attachment name and URL. Attachment names, URLs, and body text go through the same redaction pass as message text, because a signed URL can carry a token in the query string. Old normalized threads still load, because a plain string becomes an attachment with the label kept and an empty URL.
 
 - Discord forum posts and thread channels. `t2s ingest` now reads `channel.type` and `channel.parentId` from a DiscordChatExporter file. A file that is one thread channel (`PublicThread`, `PrivateThread`, `AnnouncementThread`) or one forum post yields exactly one thread, because the file already holds one conversation: every message in it belongs to that thread, no quiet-gap window is used, and the channel name becomes the title when no better title exists. A forum file that holds several posts groups by the post each message names through `threadId`, `thread_id`, `meta.thread_id`, or `reference.channelId`, in that order, so two posts in one export never merge into one conversation. A bundle is a dict whose `channels` or `threads` key holds entries that each carry their own messages, and one entry is one thread; an entry with no messages is skipped. Ordinary text channel exports are unchanged: they still build threads from reply references and quiet-gap windows. `docs/cli.md` documents the three shapes, and `detect_format` recognizes the bundle shape as `discord`.

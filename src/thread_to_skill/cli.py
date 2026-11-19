@@ -33,6 +33,7 @@ from .hooks import (
 from .install import ALL_HARNESSES, DEFAULT_HARNESSES, install_many
 from .locking import DEFAULT_WAIT_SECONDS, LockError, acquire, release
 from .locales import available_locales
+from .mcp import serve as serve_mcp
 from .models import Thread
 from .providers import ProviderError, get_provider
 from .redact import redact_thread
@@ -132,7 +133,7 @@ def _config(args: argparse.Namespace) -> Config:
 
 # Read-only commands never take the workspace lock. `version` touches no
 # workspace, so it needs no lock either.
-READ_ONLY_COMMANDS = {"list", "show", "search", "suggest", "stats", "review", "version"}
+READ_ONLY_COMMANDS = {"list", "show", "search", "suggest", "stats", "review", "version", "serve"}
 
 
 def _lock_path(args: argparse.Namespace) -> Path:
@@ -1621,6 +1622,13 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    if not args.mcp:
+        raise ValueError("Only the MCP transport exists: run `t2s serve --mcp`.")
+    _, store = _open(args)
+    return serve_mcp(store)
+
+
 def cmd_version(args: argparse.Namespace) -> int:
     _print(f"thread-to-skill {__version__}")
     _print("https://github.com/fuleinist/thread-to-skill")
@@ -1892,6 +1900,14 @@ def build_parser() -> argparse.ArgumentParser:
     doctor.add_argument("--json", action="store_true")
     doctor.add_argument("--migrate", action="store_true", help="Apply pending database migrations")
     doctor.set_defaults(func=cmd_doctor)
+
+    serve = sub.add_parser("serve", help="Serve the skill library to an agent host")
+    serve.add_argument(
+        "--mcp",
+        action="store_true",
+        help="Speak MCP over stdio (the only transport)",
+    )
+    serve.set_defaults(func=cmd_serve)
 
     version = sub.add_parser("version", help="Print the version")
     version.set_defaults(func=cmd_version)
