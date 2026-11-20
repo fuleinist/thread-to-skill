@@ -44,7 +44,7 @@ jobs:
           "$RUNNER_TEMP/smoke/bin/python" -m pip install --upgrade pip
           "$RUNNER_TEMP/smoke/bin/python" -m pip install dist/*.whl
           "$RUNNER_TEMP/smoke/bin/t2s" --version
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
