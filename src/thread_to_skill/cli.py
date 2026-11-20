@@ -36,6 +36,7 @@ from .locales import available_locales
 from .mcp import serve as serve_mcp
 from .models import Thread
 from .providers import ProviderError, get_provider
+from .publish import PublishError, publish_skill
 from .redact import redact_thread
 from .render import prune_snapshots, snapshot_bundle
 from .review import apply_fixes, reason_counts, review_payload, review_skills
@@ -1508,6 +1509,52 @@ def cmd_import_bundle(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_publish(args: argparse.Namespace) -> int:
+    _, store = _open(args)
+    skill = store.get_skill(args.slug)
+    if skill is None:
+        _print(red(f"error: no skill named {args.slug!r}. Run `t2s list` to see the slugs."))
+        return 1
+    visibility = "public" if args.public else "private"
+    try:
+        result = publish_skill(
+            skill,
+            target=args.to,
+            org=args.org,
+            repo=args.repo,
+            visibility=visibility,
+            include_references=args.include_references,
+            dry_run=args.dry_run,
+        )
+    except PublishError as exc:
+        _print(red(f"error: {exc}"))
+        return 1
+
+    if args.json:
+        _print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
+    destination = result["repository"] if result["target"] == "github" else "clawhub"
+    if result["dry_run"]:
+        _print(
+            f"{dim('would publish')} {bold(result['slug'])} -> {destination} "
+            f"({result['visibility']})"
+        )
+        for item in result["files"]:
+            _print(f"  {item['path']} ({human_number(item['bytes'])} bytes)")
+        for note in result["notes"]:
+            _print(dim(f"  {note}"))
+    else:
+        _print(f"{green('published')} {bold(result['slug'])} -> {result['url'] or destination}")
+        if result["delegated"]:
+            _print(dim("  the clawhub CLI did the upload"))
+        for note in result["notes"]:
+            _print(dim(f"  {note}"))
+    for warning in result["warnings"]:
+        _print(yellow(f"  warning: {warning}"))
+    return 0
+
+
 def cmd_import(args: argparse.Namespace) -> int:
     config, store = _open(args)
     try:
@@ -1896,6 +1943,37 @@ def build_parser() -> argparse.ArgumentParser:
     import_cmd.add_argument("--json", action="store_true")
     import_cmd.set_defaults(func=cmd_import)
 
+    publish_cmd = sub.add_parser("publish", help="Publish a skill to GitHub or to ClawHub")
+    publish_cmd.add_argument("slug", help="Slug of the skill to publish")
+    publish_cmd.add_argument(
+        "--to",
+        choices=["github", "clawhub"],
+        default="github",
+        help="Where to publish (default: github)",
+    )
+    publish_cmd.add_argument(
+        "--private",
+        action="store_true",
+        help="Publish a private repository; this is the default",
+    )
+    publish_cmd.add_argument(
+        "--public",
+        action="store_true",
+        help="Publish a public repository; private is the default",
+    )
+    publish_cmd.add_argument("--org", default="", help="Owner of the new repository (default: the gh account)")
+    publish_cmd.add_argument("--repo", default="", help="Repository name (default: the skill slug)")
+    publish_cmd.add_argument(
+        "--dry-run", action="store_true", help="Print the plan and make no network calls"
+    )
+    publish_cmd.add_argument(
+        "--include-references",
+        action="store_true",
+        help="Also publish references/thread.md, which holds conversation text",
+    )
+    publish_cmd.add_argument("--json", action="store_true")
+    publish_cmd.set_defaults(func=cmd_publish)
+
     doctor = sub.add_parser("doctor", help="Check the local environment")
     doctor.add_argument("--json", action="store_true")
     doctor.add_argument("--migrate", action="store_true", help="Apply pending database migrations")
@@ -1936,7 +2014,7 @@ def main(argv: list[str] | None = None) -> int:
     except LockError as exc:
         _print(red(f"error: {exc}"))
         return 1
-    except (BundleError, ConfigError, DistillError, DuplicateSkill, ProviderError, StoreError, FileNotFoundError, ValueError, KeyError) as exc:
+    except (BundleError, ConfigError, DistillError, DuplicateSkill, ProviderError, PublishError, StoreError, FileNotFoundError, ValueError, KeyError) as exc:
         _print(red(f"error: {exc}"))
         return 1
     except KeyboardInterrupt:
