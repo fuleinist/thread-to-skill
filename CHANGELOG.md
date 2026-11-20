@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- A publish command. `t2s publish <slug>` pushes one local skill to its own GitHub
+  repository, or delegates the upload to the `clawhub` CLI with `--to clawhub`. The
+  repository carries `SKILL.md`, `metadata.json`, and a generated `README.md`. A
+  publish is private by default, so `--public` must be written out. The command reuses
+  the existing `gh` login and never asks for a token. A missing or logged-out `gh`
+  stops the run with an actionable message. `--dry-run` makes no network calls and
+  lists every file that would be pushed. `references/thread.md` holds conversation text
+  even after redaction, so a publish leaves it out unless `--include-references` is
+  passed, and the command prints a warning when it is. `docs/cli.md` documents the
+  command, the flags, and the privacy rule.
 - An MCP server. `t2s serve --mcp` serves the local skill library over MCP on stdio,
   using newline-delimited JSON-RPC 2.0. Four read-only tools are exposed: `search_skills`
   returns slug, title, description, and score; `get_skill` returns the exact `SKILL.md`
